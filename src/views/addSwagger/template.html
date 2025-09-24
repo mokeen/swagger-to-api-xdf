@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<title>Add Swagger Document</title>
+	<!-- Bootstrap CSS -->
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+	<style>
+		body {
+			padding: 20px;
+			background-color: var(--vscode-editor-background);
+			color: var(--vscode-editor-foreground);
+		}
+
+		.form-container {
+			max-width: 600px;
+			margin: 0 auto;
+		}
+
+		.form-label {
+			font-weight: 500;
+		}
+
+		.btn-submit {
+			width: 100%;
+			margin-top: 20px;
+		}
+	</style>
+</head>
+
+<body>
+	<div class="form-container">
+		<h2 class="text-center mb-4">添加Swagger文档</h2>
+		<h6 class="text-center mb-4">向当前项目中新增一个swagger服务文档并同步至项目 <strong>.contractrc</strong> 文件</h4>
+			<form id="swaggerForm">
+				<div class="mb-3">
+					<label for="swaggerUrl" class="form-label">Swagger URL</label>
+					<input type="url" class="form-control" id="swaggerUrl" placeholder="https://example.com/swagger"
+						required />
+					<div class="invalid-feedback">请输入有效的URL地址</div>
+				</div>
+
+				<div class="mb-3">
+					<label for="swaggerName" class="form-label">文档名称</label>
+					<input type="text" class="form-control" id="swaggerName" placeholder="My API" required />
+					<div class="invalid-feedback">请输入文档名称</div>
+				</div>
+
+				<div class="mb-3">
+					<label for="swaggerDesc" class="form-label">文档描述 (可选)</label>
+					<textarea class="form-control" id="swaggerDesc" rows="2" placeholder="请输入描述信息..."></textarea>
+				</div>
+
+				<div class="d-flex gap-2 mt-4">
+					<button type="button" id="testUrlBtn" class="btn btn-outline-primary flex-grow-1" onclick="testSwaggerUrl()">
+						<i class="bi bi-link-45deg"></i> 测试链接
+					</button>
+
+					<button type="submit" class="btn btn-primary flex-grow-1">
+						添加文档
+					</button>
+				</div>
+			</form>
+	</div>
+
+	<!-- Bootstrap JS 和验证支持 -->
+	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+	<script>
+		const vscode = acquireVsCodeApi();
+
+		// 表单提交处理
+		document.getElementById("swaggerForm").addEventListener(
+			"submit",
+			(event) => {
+				event.preventDefault();
+				event.stopPropagation();
+
+				const form = event.currentTarget;
+				if (form.checkValidity()) {
+					vscode.postMessage({
+						command: "addSwagger",
+						url: document.getElementById("swaggerUrl").value,
+						name: document.getElementById("swaggerName").value,
+						desc: document.getElementById("swaggerDesc").value || "",
+					});
+				}
+
+				form.classList.add("was-validated");
+			},
+			false
+		);
+
+		function isValidSwaggerUrl(url) {
+			// 基础格式校验
+			try {
+				const urlObj = new URL(url);
+				const validProtocol = ['http:', 'https:'].includes(urlObj.protocol);
+				const validPath = /(\/swagger.*|\.json)$/i.test(urlObj.pathname);
+
+				return validProtocol &&
+					urlObj.hostname.includes('.') &&
+					!urlObj.hostname.startsWith(' ') &&
+					validPath;
+			} catch {
+				return false;
+			}
+		}
+
+		function testSwaggerUrl() {
+			const url = document.getElementById('swaggerUrl').value.trim();
+			const testBtn = document.getElementById('testUrlBtn');
+
+			// 校验URL格式
+			if (!url) {
+				vscode.postMessage({
+					command: 'showAlert',
+					text: '请输入Swagger URL！'
+				});
+				return;
+			}
+
+			if (!isValidSwaggerUrl(url)) {
+				testBtn.className = 'btn btn-outline-danger flex-grow-1';
+				testBtn.innerHTML = '<i class="bi bi-exclamation-circle"></i> URL格式错误';
+				setTimeout(() => {
+					testBtn.className = 'btn btn-outline-primary flex-grow-1';
+					testBtn.innerHTML = '<i class="bi bi-link-45deg"></i> 测试链接';
+				}, 2000);
+				return;
+			}
+
+			// 重置状态
+			testBtn.disabled = true;
+			// 重置状态
+			testBtn.className = 'btn btn-outline-secondary flex-grow-1';
+			testBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 测试中...';
+
+			vscode.postMessage({
+				command: 'testSwaggerUrl',
+				url: url
+			});
+		}
+
+		// 接收测试结果
+		window.addEventListener('message', event => {
+			const testBtn = document.getElementById('testUrlBtn');
+			testBtn.disabled = false;
+
+			if (event.data.command === 'testUrlResult') {
+				const icon = '<i class="bi bi-link-45deg"></i>';
+				if (event.data.available) {
+					testBtn.className = 'btn btn-outline-success flex-grow-1';
+					testBtn.innerHTML = `${icon} 测试通过`;
+				} else {
+					testBtn.className = 'btn btn-outline-danger flex-grow-1';
+					testBtn.innerHTML = `${icon} 测试失败`;
+				}
+
+				// 3秒后恢复默认状态
+				const timer = setTimeout(() => {
+					clearTimeout(timer);
+					testBtn.className = 'btn btn-outline-primary flex-grow-1';
+					testBtn.innerHTML = `${icon} 测试链接`;
+				}, 3000);
+
+				vscode.postMessage({
+					command: 'showAlert',
+					text: event.data.available
+						? '✅ Swagger文档可正常访问'
+						: '❌ 无法访问此Swagger URL'
+				});
+			}
+		});
+	</script>
+</body>
+
+</html>
