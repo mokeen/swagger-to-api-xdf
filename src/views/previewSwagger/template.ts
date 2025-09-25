@@ -654,7 +654,13 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
                   : \`api-\${escapeHtml(tagName)}-\${method}-\${Date.now().toString(36)}\`,
 								...methodObj
 							}))
-					);
+					)
+					// 按照 operationId 排序，如果没有 operationId 则按照 summary 排序
+					.sort((a, b) => {
+						const aId = a.operationId || a.summary || a.path.split('/').pop();
+						const bId = b.operationId || b.summary || b.path.split('/').pop();
+						return aId.localeCompare(bId, "zh-CN");
+					});
 
 				if (apiList.length === 0) {
 					accordionBody.innerHTML = '<div class="alert alert-info">该Controller下无接口</div>';
