@@ -352,7 +352,7 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 			</div>
 		</div>
 
-		<div class="toast-container position-fixed top-0 end-0 p-3">
+		<div class="toast-container position-fixed end-0 p-3">
 			<div id="liveToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
 				<div class="toast-header">
 					<strong class="me-auto">提示</strong>
@@ -394,7 +394,7 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 			let basicContent = null;
 			let swaggerJsonData = null;
 			let selectedApis = {};
-			let existingApis = [];
+			let existingApiData = {};
 
 			// 将目标吸顶到容器顶部（仅当需要滚动时），可滚动容器为 interface-card
 			function scrollToTopInContainer(container, target, margin = 6) {
@@ -431,6 +431,17 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 			}
 
 			function handleExportDoc() {
+				// 检查是否选中了接口
+				const hasSelectedApis = Object.keys(selectedApis).some(controller =>
+					selectedApis[controller] && selectedApis[controller].length > 0
+				);
+
+				if (!hasSelectedApis) {
+					toastBody.innerHTML = '请先选择要导出的接口！';
+					toast.show();
+					return;
+				}
+
 				const btn = this;
 				btn.disabled = true;
 				refreshBtn.disabled = true;
@@ -473,7 +484,7 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 				basicContainer.innerHTML = '';
 				interfaceContainer.innerHTML = '';
 				selectedApis = {};
-				existingApis = [];
+				existingApiData = {};
 
 				try {
 					basicContent = JSON.parse(\`{{basicInfo}}\`);
@@ -933,8 +944,20 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 						});
 					}
 
-					// 标识已存在的API
-					markExistingApis();
+					// 标识当前控制器中的已存在API
+					if (existingApiData && Object.keys(existingApiData).length > 0) {
+						// 查找匹配的控制器数据并标记
+						Object.entries(existingApiData).forEach(([controllerName, apis]) => {
+							const isMatchingController = tagName === controllerName ||
+								tagName === controllerName.replace(/([A-Z])/g, (match, letter, index) => {
+									return index === 0 ? letter.toLowerCase() : '-' + letter.toLowerCase();
+								}).replace(/Controller$/, '');
+
+							if (isMatchingController) {
+								markApiItemsInController(accordionBody, apis);
+							}
+						});
+					}
 				}
 
 			function isSameDtoContent(refKey, newContent, container) {
@@ -1106,7 +1129,7 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 				const message = event.data;
 				switch (message.command) {
 					case 'existingApisResponse':
-						existingApis = message.existingApis || [];
+						existingApiData = message.existingApiData || {};
 						markExistingApis();
 						break;
 					case 'updateSwaggerContent':
@@ -1152,19 +1175,56 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 				}
 			});
 
-			// 标识已存在的API
+			// 标识已存在的API（只处理展开的控制器）
 			function markExistingApis() {
-				existingApis.forEach(existingApi => {
-					const apiItems = document.querySelectorAll('.list-group-item');
+
+				// 如果没有已存在的API数据，直接返回
+				if (!existingApiData || Object.keys(existingApiData).length === 0) {
+					return;
+				}
+
+				// 只处理当前展开的控制器
+				const expandedAccordions = document.querySelectorAll('.accordion-collapse.show .accordion-body[data-tag]');
+
+				expandedAccordions.forEach(accordionBody => {
+					const tagName = accordionBody.getAttribute('data-tag');
+
+					// 查找匹配的控制器数据
+					Object.entries(existingApiData).forEach(([controllerName, apis]) => {
+						// 匹配控制器名称
+						const isMatchingController = tagName === controllerName ||
+							tagName === controllerName.replace(/([A-Z])/g, (match, letter, index) => {
+								return index === 0 ? letter.toLowerCase() : '-' + letter.toLowerCase();
+							}).replace(/Controller$/, '');
+
+						if (isMatchingController) {
+							markApiItemsInController(accordionBody, apis);
+						}
+					});
+				});
+			}
+
+			// 标记指定控制器中的API项
+			function markApiItemsInController(accordionBody, apis) {
+				// 清除该控制器下的现有标记
+				const apiItems = accordionBody.querySelectorAll('.list-group-item');
+				apiItems.forEach(item => {
+					item.classList.remove('existing-api');
+				});
+
+				// 遍历该控制器下的所有API
+				apis.forEach(existingApi => {
+
 					apiItems.forEach(item => {
 						const pathElement = item.querySelector('.api-path');
 						const methodElement = item.querySelector('.badge');
+
 						if (pathElement && methodElement) {
 							const apiPath = pathElement.textContent.trim();
 							const apiMethod = methodElement.textContent.trim().toLowerCase();
 
 							// 检查路径和方法是否匹配
-							if (apiPath === existingApi.path && apiMethod === existingApi.method) {
+							if (apiPath === existingApi.path && apiMethod === existingApi.method.toLowerCase()) {
 								item.classList.add('existing-api');
 							}
 						}

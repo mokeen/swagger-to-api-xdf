@@ -56,21 +56,21 @@ export class SwaggerPreviewPanel {
 						const workspacePath = workspaceFolders[0].uri.fsPath;
 						const docName = swaggerJson.info?.title || basicInfo.name || 'default';
 						try {
-							const existingApis = await ApiGenerationService.getExistingApis(workspacePath, docName);
+							const existingApiData = await ApiGenerationService.getExistingApiData(workspacePath, docName);
 							this._panel.webview.postMessage({
 								command: 'existingApisResponse',
-								existingApis: existingApis
+								existingApiData: existingApiData
 							});
 						} catch (error) {
 							this._panel.webview.postMessage({
 								command: 'existingApisResponse',
-								existingApis: []
+								existingApiData: {}
 							});
 						}
 					} else {
 						this._panel.webview.postMessage({
 							command: 'existingApisResponse',
-							existingApis: []
+							existingApiData: {}
 						});
 					}
 					break;
