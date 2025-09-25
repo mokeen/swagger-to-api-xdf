@@ -172,6 +172,23 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 			.list-group-item.selected-api .api-item-link {
 				background-color: rgb(30 11 239 / 11%);
 			}
+			.list-group-item.existing-api {
+				border-bottom: 3px solid #28a745;
+			}
+			.list-group-item.existing-api .api-item-link {
+				position: relative;
+			}
+			.list-group-item.existing-api .api-item-link::after {
+				content: "已存在";
+				position: absolute;
+				bottom: 5px;
+				right: 5px;
+				background-color: #28a745;
+				color: white;
+				font-size: 10px;
+				padding: 2px 6px;
+				border-radius: 10px;
+			}
 			.api-path {
 				word-break: break-all;
 			}
@@ -377,6 +394,7 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 			let basicContent = null;
 			let swaggerJsonData = null;
 			let selectedApis = {};
+			let existingApis = [];
 
 			// 将目标吸顶到容器顶部（仅当需要滚动时），可滚动容器为 interface-card
 			function scrollToTopInContainer(container, target, margin = 6) {
@@ -409,24 +427,7 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 					command: 'refreshSwaggerDoc',
 				});
 
-				// 监听更新消息
-				const listener = window.addEventListener('message', (event) => {
-					if (event.data.command === 'updateSwaggerContent') {
-						const message = event.data;
-						swaggerJsonData = message.content;
-						initSwaggerPreview();
-						toastBody.innerHTML = '文档更新成功！';
-						toast.show();
-						resetButtonState(btn, 'refresh');
-						window.removeEventListener('message', listener);
-					}
-					if (event.data.command === 'refreshSwaggerDocFailed') {
-						toastBody.innerHTML = '文档更新失败！';
-						toast.show();
-						resetButtonState(btn, 'refresh');
-						window.removeEventListener('message', listener);
-					}
-				});
+				// 刷新按钮状态将通过全局消息监听器处理
 			}
 
 			function handleExportDoc() {
@@ -444,31 +445,7 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 					content: selectedApis
 				});
 
-				// 监听更新消息
-				const listener = window.addEventListener('message', (event) => {
-					if (event.data.command === 'exportApiSuccess') {
-						// 清空选中状态
-						selectedApis = {};
-						// 取消所有勾选框的选中状态
-						document.querySelectorAll('.form-check-input:checked').forEach(checkbox => {
-							checkbox.checked = false;
-							const listItem = checkbox.closest('.list-group-item');
-							if (listItem) {
-								listItem.classList.remove('selected-api');
-							}
-						});
-						toastBody.innerHTML = 'API导出成功！';
-						toast.show();
-						resetButtonState(btn, 'export');
-						window.removeEventListener('message', listener);
-					}
-					if (event.data.command === 'exportApiFailed') {
-						toastBody.innerHTML = 'API导出失败！';
-						toast.show();
-						resetButtonState(btn, 'export');
-						window.removeEventListener('message', listener);
-					}
-				});
+				// 导出按钮状态将通过全局消息监听器处理
 			}
 
 			function resetButtonState(btn, type) {
@@ -496,6 +473,7 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 				basicContainer.innerHTML = '';
 				interfaceContainer.innerHTML = '';
 				selectedApis = {};
+				existingApis = [];
 
 				try {
 					basicContent = JSON.parse(\`{{basicInfo}}\`);
@@ -503,7 +481,12 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 					// 1. 渲染基础信息
 					renderBasicInfo(basicContent);
 
-					// 2. 渲染Controller列表
+					// 2. 请求已存在的API列表
+					vscode.postMessage({
+						command: 'getExistingApis'
+					});
+
+					// 3. 渲染Controller列表
 					if (swaggerJsonData.tags && swaggerJsonData.tags.length) {
 						renderControllerList(swaggerJsonData.tags);
 					} else {
@@ -938,12 +921,15 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 					searchInput.addEventListener('input', () => applyFilter(searchInput.value));
 				}
 				if (searchClear) {
-					searchClear.addEventListener('click', () => {
-						searchInput.value = '';
-						applyFilter('');
-					});
+						searchClear.addEventListener('click', () => {
+							searchInput.value = '';
+							applyFilter('');
+						});
+					}
+
+					// 标识已存在的API
+					markExistingApis();
 				}
-			}
 
 			function isSameDtoContent(refKey, newContent, container) {
 				const existingDetails = container.querySelector(\`.dto-ref-details[data-ref="\${refKey}"]\`);
@@ -1107,6 +1093,77 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 					\`;
 				}
 				return schema.type || (schema.enum ? \`enum: \${schema.enum.join('|')}\` : 'any');
+			}
+
+			// 监听来自扩展的消息
+			window.addEventListener('message', event => {
+				const message = event.data;
+				switch (message.command) {
+					case 'existingApisResponse':
+						existingApis = message.existingApis || [];
+						markExistingApis();
+						break;
+					case 'updateSwaggerContent':
+						swaggerJsonData = message.content;
+						initSwaggerPreview();
+						// 重新请求已存在的API列表
+						vscode.postMessage({
+							command: 'getExistingApis'
+						});
+						toastBody.innerHTML = '文档更新成功！';
+						toast.show();
+						resetButtonState(refreshBtn, 'refresh');
+						break;
+					case 'refreshSwaggerDocFailed':
+						toastBody.innerHTML = '文档更新失败！';
+						toast.show();
+						resetButtonState(refreshBtn, 'refresh');
+						break;
+					case 'exportApiSuccess':
+						// 清空选中状态
+						selectedApis = {};
+						// 取消所有勾选框的选中状态
+						document.querySelectorAll('.form-check-input:checked').forEach(checkbox => {
+							checkbox.checked = false;
+							const listItem = checkbox.closest('.list-group-item');
+							if (listItem) {
+								listItem.classList.remove('selected-api');
+							}
+						});
+						// 重新请求已存在的API列表
+						vscode.postMessage({
+							command: 'getExistingApis'
+						});
+						toastBody.innerHTML = 'API导出成功！';
+						toast.show();
+						resetButtonState(exportBtn, 'export');
+						break;
+					case 'exportApiFailed':
+						toastBody.innerHTML = 'API导出失败！';
+						toast.show();
+						resetButtonState(exportBtn, 'export');
+						break;
+				}
+			});
+
+			// 标识已存在的API
+			function markExistingApis() {
+				existingApis.forEach(existingApi => {
+					const apiItems = document.querySelectorAll('.list-group-item');
+					apiItems.forEach(item => {
+						const pathElement = item.querySelector('.api-path');
+						const methodElement = item.querySelector('.badge');
+						if (pathElement && methodElement) {
+							const apiPath = pathElement.textContent.trim();
+							const apiMethod = methodElement.textContent.trim().toLowerCase();
+
+							// 检查路径和方法是否匹配
+							if (apiPath === existingApi.path && apiMethod === existingApi.method) {
+								item.classList.add('existing-api');
+							}
+						}
+					});
+				});
 			}
 
 			initSwaggerPreview();

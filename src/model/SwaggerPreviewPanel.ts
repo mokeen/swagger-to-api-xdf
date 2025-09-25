@@ -49,7 +49,31 @@ export class SwaggerPreviewPanel {
 
 		// 接收来自webview的消息
 		this._panel.webview.onDidReceiveMessage(async message => {
+			const workspaceFolders = vscode.workspace.workspaceFolders;
 			switch (message.command) {
+				case 'getExistingApis':
+					if (workspaceFolders && workspaceFolders.length > 0) {
+						const workspacePath = workspaceFolders[0].uri.fsPath;
+						const docName = swaggerJson.info?.title || basicInfo.name || 'default';
+						try {
+							const existingApis = await ApiGenerationService.getExistingApis(workspacePath, docName);
+							this._panel.webview.postMessage({
+								command: 'existingApisResponse',
+								existingApis: existingApis
+							});
+						} catch (error) {
+							this._panel.webview.postMessage({
+								command: 'existingApisResponse',
+								existingApis: []
+							});
+						}
+					} else {
+						this._panel.webview.postMessage({
+							command: 'existingApisResponse',
+							existingApis: []
+						});
+					}
+					break;
 				case 'refreshSwaggerDoc':
 					vscode.window.withProgress({
 						location: vscode.ProgressLocation.Notification,
@@ -72,7 +96,6 @@ export class SwaggerPreviewPanel {
 					});
 					break;
 				case 'exportSwaggerDoc':
-					const workspaceFolders = vscode.workspace.workspaceFolders;
 					if (workspaceFolders && workspaceFolders.length > 0) {
 						const workspacePath = workspaceFolders[0].uri.fsPath;
 						const selectedApis = message.content;

@@ -4,6 +4,60 @@ import * as fs from "fs";
 import { ContractService } from "./ContractService";
 
 export class ApiGenerationService {
+	/**
+	 * 获取已存在的API列表
+	 */
+	public static async getExistingApis(workspacePath: string, docName: string): Promise<Array<{path: string, method: string}>> {
+		const servicesDir = path.join(workspacePath, 'src', 'services', docName);
+		const apisFilePath = path.join(servicesDir, 'apis.ts');
+
+		if (!fs.existsSync(apisFilePath)) {
+			return [];
+		}
+
+		try {
+			const apisContent = fs.readFileSync(apisFilePath, 'utf-8');
+			const existingApis: Array<{path: string, method: string}> = [];
+
+			// 分步骤匹配，更可靠
+			// 1. 先匹配所有的 path 定义
+			const pathRegex = /const\s+path\s*=\s*`([^`]+)`;/g;
+			// 2. 匹配对应的 HTTP 方法
+			const httpMethodRegex = /\$http\.run[^(]*\(path,\s*'(\w+)'/g;
+
+			const paths = [];
+			const methods = [];
+
+			// 提取所有路径
+			let pathMatch;
+			while ((pathMatch = pathRegex.exec(apisContent)) !== null) {
+				const pathTemplate = pathMatch[1];
+				const apiPath = pathTemplate.replace('${basePath}', '');
+				paths.push(apiPath);
+			}
+
+			// 提取所有HTTP方法
+			let methodMatch;
+			while ((methodMatch = httpMethodRegex.exec(apisContent)) !== null) {
+				const httpMethod = methodMatch[1].toLowerCase();
+				methods.push(httpMethod);
+			}
+
+			// 配对路径和方法（假设它们是按顺序出现的）
+			for (let i = 0; i < Math.min(paths.length, methods.length); i++) {
+				existingApis.push({
+					path: paths[i],
+					method: methods[i]
+				});
+			}
+
+			return existingApis;
+		} catch (error) {
+			console.error('Error reading existing APIs:', error);
+			return [];
+		}
+	}
+
 	public static async generateApiFiles(
 		workspacePath: string,
 		context: vscode.ExtensionContext,
