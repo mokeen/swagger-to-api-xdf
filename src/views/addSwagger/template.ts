@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+export const addSwaggerTemplate = `<!DOCTYPE html>
 <html>
 
 <head>
@@ -151,17 +151,17 @@
 				const icon = '<i class="bi bi-link-45deg"></i>';
 				if (event.data.available) {
 					testBtn.className = 'btn btn-outline-success flex-grow-1';
-					testBtn.innerHTML = `${icon} 测试通过`;
+					testBtn.innerHTML = \`\${icon} 测试通过\`;
 				} else {
 					testBtn.className = 'btn btn-outline-danger flex-grow-1';
-					testBtn.innerHTML = `${icon} 测试失败`;
+					testBtn.innerHTML = \`\${icon} 测试失败\`;
 				}
 
 				// 3秒后恢复默认状态
 				const timer = setTimeout(() => {
 					clearTimeout(timer);
 					testBtn.className = 'btn btn-outline-primary flex-grow-1';
-					testBtn.innerHTML = `${icon} 测试链接`;
+					testBtn.innerHTML = \`\${icon} 测试链接\`;
 				}, 3000);
 
 				vscode.postMessage({
@@ -175,4 +175,4 @@
 	</script>
 </body>
 
-</html>
+</html>`;

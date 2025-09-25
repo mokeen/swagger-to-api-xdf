@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+export const previewSwaggerTemplate = `<!DOCTYPE html>
 <html>
 	<head>
 		<title>Swagger文档预览</title>
@@ -335,7 +335,7 @@
 			</div>
 		</div>
 
-		<div class="toast-container position-fixed bottom-0 end-0 p-3">
+		<div class="toast-container position-fixed top-0 end-0 p-3">
 			<div id="liveToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
 				<div class="toast-header">
 					<strong class="me-auto">提示</strong>
@@ -400,10 +400,10 @@
 				btn.disabled = true;
 				exportBtn.disabled = true;
 				btn.classList.add('loading');
-				btn.innerHTML = `
+				btn.innerHTML = \`
 					<span class="spinner-border spinner-border-sm" role="status"></span>
 					刷新中...
-				`;
+				\`;
 
 				vscode.postMessage({
 					command: 'refreshSwaggerDoc',
@@ -434,10 +434,10 @@
 				btn.disabled = true;
 				refreshBtn.disabled = true;
 				btn.classList.add('loading');
-				btn.innerHTML = `
+				btn.innerHTML = \`
 					<span class="spinner-border spinner-border-sm" role="status"></span>
         	导出中...
-				`;
+				\`;
 
 				vscode.postMessage({
 					command: 'exportSwaggerDoc',
@@ -447,7 +447,16 @@
 				// 监听更新消息
 				const listener = window.addEventListener('message', (event) => {
 					if (event.data.command === 'exportApiSuccess') {
+						// 清空选中状态
 						selectedApis = {};
+						// 取消所有勾选框的选中状态
+						document.querySelectorAll('.form-check-input:checked').forEach(checkbox => {
+							checkbox.checked = false;
+							const listItem = checkbox.closest('.list-group-item');
+							if (listItem) {
+								listItem.classList.remove('selected-api');
+							}
+						});
 						toastBody.innerHTML = 'API导出成功！';
 						toast.show();
 						resetButtonState(btn, 'export');
@@ -468,17 +477,17 @@
 				switch (type) {
 					case 'refresh':
 						exportBtn.disabled = false;
-						btn.innerHTML = `
+						btn.innerHTML = \`
 							<svg t="1754470396208" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="6944" width="18" height="18"><path d="M887.456 443.744l102.4 136.512h-76.064c-32.48 192.544-200 339.2-401.792 339.2a407.104 407.104 0 0 1-342.56-186.752 32 32 0 0 1 53.76-34.688A343.104 343.104 0 0 0 512 855.456c166.304 0 305.024-118.208 336.672-275.2h-63.616l102.4-136.512zM512 104.544c145.664 0 278.016 77.12 350.848 200.16a32 32 0 0 1-55.04 32.608A343.232 343.232 0 0 0 512 168.544c-178.176 0-324.64 135.648-341.76 309.312h68.704l-102.4 136.544-102.4-136.544H105.92C123.296 268.8 298.464 104.544 512 104.544z" fill="#515151" p-id="6945"></path></svg>
 							刷新文档
-						`;
+						\`;
 						break
 					case 'export':
 						refreshBtn.disabled = false;
-						btn.innerHTML = `
+						btn.innerHTML = \`
 							<svg t="1754470912280" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="8706" width="18" height="18"><path d="M909.5 671.4h-625c-17.7 0-32-14.3-32-32s14.3-32 32-32h625c17.7 0 32 14.3 32 32s-14.3 32-32 32z" p-id="8707" fill="#515151"></path><path d="M904.8 662.7c-8.2 0-16.4-3.1-22.6-9.4l-225-225c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l225 225c12.5 12.5 12.5 32.8 0 45.3-6.3 6.3-14.5 9.4-22.7 9.4z" p-id="8708" fill="#515151"></path><path d="M679.5 905.2c-8.2 0-16.4-3.1-22.6-9.4-12.5-12.5-12.5-32.8 0-45.3l225-225c12.5-12.5 32.8-12.5 45.3 0s12.5 32.8 0 45.3l-225 225c-6.3 6.3-14.5 9.4-22.7 9.4z" p-id="8709" fill="#515151"></path><path d="M448.2 958.3H229.7c-89.3 0-162-72.7-162-162V228.2c0-89.3 72.7-162 162-162h568.1c89.3 0 162 72.7 162 162v208.1c0 17.7-14.3 32-32 32s-32-14.3-32-32V228.2c0-54-44-98-98-98H229.7c-54 0-98 44-98 98v568.1c0 54 44 98 98 98h218.5c17.7 0 32 14.3 32 32s-14.3 32-32 32z" p-id="8710" fill="#515151"></path></svg>
 							导出接口
-						`;
+						\`;
 						break
 				}
 			}
@@ -489,50 +498,50 @@
 				selectedApis = {};
 
 				try {
-					basicContent = JSON.parse(`{{basicInfo}}`);
-					swaggerJsonData = JSON.parse(`{{swaggerJson}}`);
+					basicContent = JSON.parse(\`{{basicInfo}}\`);
+					swaggerJsonData = JSON.parse(\`{{swaggerJson}}\`);
 					// 1. 渲染基础信息
 					renderBasicInfo(basicContent);
 
 					// 2. 渲染Controller列表
-					if (swaggerJsonData.tags?.length) {
+					if (swaggerJsonData.tags && swaggerJsonData.tags.length) {
 						renderControllerList(swaggerJsonData.tags);
 					} else {
-						interfaceContainer.innerHTML = `
+						interfaceContainer.innerHTML = \`
 							<div class="alert alert-info">
 								未找到Controller定义
 							</div>
-						`;
+						\`;
 					}
 				} catch (err) {
 					console.error("初始化失败:", err);
-					basicContainer.innerHTML = `
+					basicContainer.innerHTML = \`
 						<div class="alert alert-danger">
-							数据解析失败: ${escapeHtml(err.message)}
+							数据解析失败: \${escapeHtml(err.message)}
 						</div>
-					`;
+					\`;
 					interfaceContainerCard.style.display = "none";
 				}
 			}
 
 			function renderBasicInfo(content) {
 				// 格式化渲染
-				basicContainer.innerHTML = `
+				basicContainer.innerHTML = \`
 					<div class="row mb-2">
 						<div class="col-md-2 fw-bold">文档名称：</div>
-						<div class="col-md-10">${content.name || "无"}</div>
+						<div class="col-md-10">\${content.name || "无"}</div>
 					</div>
 					<div class="row mb-2">
 						<div class="col-md-2 fw-bold">访问地址：</div>
 						<div class="col-md-10">
-							<a href="${content.url}" target="_blank">${content.url}</a>
+							<a href="\${content.url}" target="_blank">\${content.url}</a>
 						</div>
 					</div>
 					<div class="row">
 						<div class="col-md-2 fw-bold">文档描述：</div>
-						<div class="col-md-10 text-muted">${content.desc || "暂无描述"}</div>
+						<div class="col-md-10 text-muted">\${content.desc || "暂无描述"}</div>
 					</div>
-				`;
+				\`;
 			}
 
 			function renderControllerList(tags) {
@@ -542,32 +551,32 @@
 				);
 
 				// 2. 生成Accordion结构
-				interfaceContainer.innerHTML = `
+				interfaceContainer.innerHTML = \`
 					<div class="accordion" id="controllerAccordion">
-						${sortedTags
+						\${sortedTags
 							.map(
-								(tag, index) => `
-									<div class="accordion-item" data-controller-name="${escapeHtml(tag.name)}" data-controller-desc="${escapeHtml(tag.description || '')}">
+								(tag, index) => \`
+									<div class="accordion-item" data-controller-name="\${escapeHtml(tag.name)}" data-controller-desc="\${escapeHtml(tag.description || '')}">
 										<h2 class="accordion-header">
-											<button class="accordion-button ${index > 0 ? "collapsed" : ""}"
+											<button class="accordion-button \${index > 0 ? "collapsed" : ""}"
 													type="button"
 													data-bs-toggle="collapse"
-													data-bs-target="#collapse${index}"
-													aria-expanded="${index === 0}">
-												<strong>${escapeHtml(tag.name)}</strong>
-												${
+													data-bs-target="#collapse\${index}"
+													aria-expanded="\${index === 0}">
+												<strong>\${escapeHtml(tag.name)}</strong>
+												\${
 													tag.description
-														? `<span class="text-muted ms-2">${escapeHtml(
+														? \`<span class="text-muted ms-2">\${escapeHtml(
 																tag.description
-															)}</span>`
+															)}</span>\`
 														: ""
 												}
 											</button>
 										</h2>
-										<div id="collapse${index}"
+										<div id="collapse\${index}"
 											class="accordion-collapse collapse"
 											data-bs-parent="#controllerAccordion">
-											<div class="accordion-body" data-tag="${escapeHtml(tag.name)}">
+											<div class="accordion-body" data-tag="\${escapeHtml(tag.name)}">
 												<!-- 接口列表将在这里动态加载 -->
 												<div class="text-center py-3">
 													<div class="spinner-border text-primary" role="status">
@@ -577,11 +586,11 @@
 											</div>
 										</div>
 									</div>
-							`
+							\`
 							)
 							.join("")}
 					</div>
-				`;
+				\`;
 
 				// 3. 控制器级别筛选（使用顶部工具栏输入框，不随列表滚动）
 				const cSearchInput = document.querySelector('#controller-toolbar .controller-search-input');
@@ -638,7 +647,7 @@
 
 			function loadTagApis(tagName) {
 
-				const accordionBody = document.querySelector(`.accordion-body[data-tag="${escapeHtml(tagName)}"]`);
+				const accordionBody = document.querySelector(\`.accordion-body[data-tag="\${escapeHtml(tagName)}"]\`);
 				if (!accordionBody) {
 					console.error('未找到对应的accordion-body');
 					return;
@@ -653,13 +662,13 @@
 				const apiList = Object.entries(swaggerJsonData.paths)
 					.flatMap(([path, methods]) =>
 						Object.entries(methods)
-							.filter(([_, methodObj]) => methodObj.tags?.includes(tagName))
+							.filter(([_, methodObj]) => methodObj.tags && methodObj.tags.includes(tagName))
 							.map(([method, methodObj]) => ({
 								path,
 								method,
 								operationId: methodObj.operationId
-                  ? `op-${escapeHtml(methodObj.operationId)}`
-                  : `api-${escapeHtml(tagName)}-${method}-${Date.now().toString(36)}`,
+                  ? \`op-\${escapeHtml(methodObj.operationId)}\`
+                  : \`api-\${escapeHtml(tagName)}-\${method}-\${Date.now().toString(36)}\`,
 								...methodObj
 							}))
 					);
@@ -670,7 +679,7 @@
 				}
 
 				// 渲染API列表
-				accordionBody.innerHTML = `
+				accordionBody.innerHTML = \`
 					<div class="d-flex justify-content-end align-items-center mb-2 gap-2">
 						<div class="input-group input-group-sm">
 							<input type="text" class="form-control api-search-input" placeholder="搜索接口路径或名称..." />
@@ -684,54 +693,54 @@
 						</div>
 					</div>
 					<div class="list-group list-group-flush">
-						${apiList.map(api => `
-							<div class="list-group-item border-0 px-0 py-2" data-path="${escapeHtml(api.path)}" data-name="${escapeHtml(api.summary || '')}">
+						\${apiList.map(api => \`
+							<div class="list-group-item border-0 px-0 py-2" data-path="\${escapeHtml(api.path)}" data-name="\${escapeHtml(api.summary || '')}">
 								<div class="api-collapse-header d-flex justify-content-between align-items-stretch">
-									<a href="#${api.operationId}"
+									<a href="#\${api.operationId}"
 										class="api-item-link text-decoration-none text-reset"
 										data-bs-toggle="collapse"
 										aria-expanded="false"
 									>
-										<span class="badge ${
+										<span class="badge \${
 											api.method === 'get' ? 'bg-primary' :
 											api.method === 'post' ? 'bg-success' :
 											api.method === 'put' ? 'bg-warning text-dark' :
 											api.method === 'delete' ? 'bg-danger' : 'bg-secondary'
 										} me-2">
-											${api.method.toUpperCase()}
+											\${api.method.toUpperCase()}
 										</span>
 										<div>
-											<div class="fw-bold api-path">${escapeHtml(api.path)}</div>
-											<small class="text-muted">${api.summary ? escapeHtml(api.summary) : '无描述'}</small>
+											<div class="fw-bold api-path">\${escapeHtml(api.path)}</div>
+											<small class="text-muted">\${api.summary ? escapeHtml(api.summary) : '无描述'}</small>
 										</div>
 									</a>
-									<div class="copy-api-path" data-path="${api.path}">
+									<div class="copy-api-path" data-path="\${api.path}">
 										<svg t="1754554762483" class="icon" viewBox="0 0 1025 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="14492" width="20" height="20"><path d="M688.7 1023.3H142.2c-76.2 0-138.1-62-138.1-138.1V338.7c0-76.2 62-138.1 138.1-138.1h546.5c76.2 0 138.1 62 138.1 138.1v546.5c0 76.1-62 138.1-138.1 138.1zM142.2 276.6c-34.3 0-62.1 27.9-62.1 62.1v546.5c0 34.3 27.9 62.1 62.1 62.1h546.5c34.3 0 62.1-27.9 62.1-62.1V338.7c0-34.3-27.9-62.1-62.1-62.1H142.2z" fill="#515151" p-id="14493"></path><path d="M987.8 447.8c-21 0-38-17-38-38V141.7c0-34.3-27.9-62.1-62.1-62.1H614.1c-21 0-38-17-38-38s17-38 38-38h273.6c76.2 0 138.1 62 138.1 138.1v268.1c0 21-17 38-38 38z" fill="#515151" p-id="14494"></path></svg>
 									</div>
 									<div class="form-check">
 										<input type="checkbox" class="form-check-input">
 									</div>
 								</div>
-								<div class="collapse mt-2" id="${api.operationId}">
+								<div class="collapse mt-2" id="\${api.operationId}">
 									<div class="card card-body bg-light">
 										<div class="placeholder-content"
-											data-api-id="${api.operationId}"
+											data-api-id="\${api.operationId}"
 										>
-											${api.operationId ? '' : '<div class="alert alert-warning mb-0">此接口缺少operationId</div>'}
+											\${api.operationId ? '' : '<div class="alert alert-warning mb-0">此接口缺少operationId</div>'}
 										</div>
 									</div>
 								</div>
 							</div>
-						`).join('')}
+						\`).join('')}
 					</div>
-				`;
+				\`;
 
 				// API的点击事件
 				accordionBody.querySelectorAll('.api-item-link').forEach(link => {
 					link.addEventListener('click', function(e) {
 
 						const apiId = this.getAttribute('href').substring(1);
-						const detailPanel = document.querySelector(`[data-api-id="${apiId}"]`);
+						const detailPanel = document.querySelector(\`[data-api-id="\${apiId}"]\`);
 						if (!detailPanel) return;
 
 						// 通过data属性获取原始数据
@@ -740,24 +749,24 @@
 						if (apiData) {
 							// 1. 渲染请求参数
 							let parametersHtml = '';
-							if (apiData.parameters?.length) {
-								parametersHtml = `
+							if (apiData.parameters && apiData.parameters.length) {
+								parametersHtml = \`
 									<div class="mb-4">
 										<h6 class="border-bottom pb-2">📤 请求参数</h6>
-										${renderParameters(apiData.parameters, swaggerJsonData.definitions)}
+										\${renderParameters(apiData.parameters, swaggerJsonData.definitions)}
 									</div>
-								`;
+								\`;
 							}
 
 							// 2. 渲染响应参数
 							let responsesHtml = '';
 							if (apiData.responses) {
-								responsesHtml = `
+								responsesHtml = \`
 									<div class="mt-4">
 										<h6 class="border-bottom pb-2">📥 响应结构</h6>
-										${renderResponses(apiData.responses, swaggerJsonData.definitions)}
+										\${renderResponses(apiData.responses, swaggerJsonData.definitions)}
 									</div>
-								`;
+								\`;
 							}
 
 							detailPanel.innerHTML = parametersHtml + responsesHtml;
@@ -781,7 +790,7 @@
 						}
 
 						// 检查是否已存在当前 DTO（无论内容是否一致）
-						const existingDetails = container.querySelector(`.dto-ref-details[data-ref="${refKey}"]`);
+						const existingDetails = container.querySelector(\`.dto-ref-details[data-ref="\${refKey}"]\`);
 						if (existingDetails) {
 							existingDetails.remove();
 							e.target.classList.remove('active');
@@ -804,7 +813,7 @@
 						const refKey = e.target.dataset.ref;
 						const container = e.target.closest('.request-parameters-table').nextElementSibling;
 
-						const existingDetails = container.querySelector(`.request-dto-details[data-ref="${refKey}"]`);
+						const existingDetails = container.querySelector(\`.request-dto-details[data-ref="\${refKey}"]\`);
 						if (existingDetails) {
 							existingDetails.remove();
 							e.target.classList.remove('active');
@@ -937,7 +946,7 @@
 			}
 
 			function isSameDtoContent(refKey, newContent, container) {
-				const existingDetails = container.querySelector(`.dto-ref-details[data-ref="${refKey}"]`);
+				const existingDetails = container.querySelector(\`.dto-ref-details[data-ref="\${refKey}"]\`);
 				if (!existingDetails) return false;
 
 				// 创建临时元素比较内容
@@ -948,7 +957,7 @@
 
 			// 渲染参数表格
 			function renderParameters(parameters, definitions) {
-				return `
+				return \`
 					<table class="table table-sm table-bordered text-center request-parameters-table">
 						<thead class="table-light">
 							<tr>
@@ -960,130 +969,130 @@
 							</tr>
 						</thead>
 						<tbody>
-							${parameters.map(param => `
+							\${parameters.map(param => \`
 								<tr>
-									<td>${param.in || '-'}</td>
-									<td><code>${param.name}</code></td>
-									<td>${resolveType(param.schema || param, definitions, true)}</td>
-									<td>${param.required ? '✓' : ''}</td>
-									<td>${param.description || '-'}</td>
+									<td>\${param.in || '-'}</td>
+									<td><code>\${param.name}</code></td>
+									<td>\${resolveType(param.schema || param, definitions, true)}</td>
+									<td>\${param.required ? '✓' : ''}</td>
+									<td>\${param.description || '-'}</td>
 								</tr>
-							`).join('')}
+							\`).join('')}
 						</tbody>
 					</table>
 					<div class="request-dto-container mt-3"></div>
-				`;
+				\`;
 			}
 
 			// 渲染响应结构
 			function renderResponses(responses, definitions) {
-				return Object.entries(responses).map(([statusCode, response]) => `
+				return Object.entries(responses).map(([statusCode, response]) => \`
 					<div class="mb-3">
 						<div class="d-flex align-items-center mb-2">
-							<span class="badge ${statusCode.startsWith('2') ? 'bg-success' : 'bg-warning'} me-2">
-								HTTP ${statusCode}
+							<span class="badge \${statusCode.startsWith('2') ? 'bg-success' : 'bg-warning'} me-2">
+								HTTP \${statusCode}
 							</span>
-							<small class="text-muted">${response.description || '无描述'}</small>
+							<small class="text-muted">\${response.description || '无描述'}</small>
 						</div>
-						${response.schema ? renderSchema(response.schema) : '<p>无数据定义</p>'}
+						\${response.schema ? renderSchema(response.schema) : '<p>无数据定义</p>'}
 					</div>
-				`).join('');
+				\`).join('');
 			}
 
 			// 递归渲染Schema结构
 			function renderSchema(schema) {
 				if (schema.$ref) {
 					const refKey = schema.$ref.replace('#/definitions/', '');
-					return `
+					return \`
 						<div class="dto-container">
-							<code class="dto-toggle text-primary">${refKey}</code>
+							<code class="dto-toggle text-primary">\${refKey}</code>
 							<div class="dto-details" style="display:none">
-								${renderModel(refKey, swaggerJsonData.definitions)}
+								\${renderModel(refKey, swaggerJsonData.definitions)}
 							</div>
 						</div>
-					`;
+					\`;
 				}
-				return `
+				return \`
 					<div class="ms-2">
-						<span class="text-muted">${schema.type || 'any'}</span>
-						${schema.description ? `<div class="text-muted">${escapeHtml(schema.description)}</div>` : ''}
+						<span class="text-muted">\${schema.type || 'any'}</span>
+						\${schema.description ? \`<div class="text-muted">\${escapeHtml(schema.description)}</div>\` : ''}
 					</div>
-				`;
+				\`;
 			}
 
 			function renderModel(modelName, definitions) {
 				const model = definitions[modelName];
 				if (!model) return '<div class="alert alert-warning">未找到定义</div>';
 
-				return `
+				return \`
 					<div class="model-definition mt-2 bg-light rounded">
 						<div class="model-header mb-2">
-							<strong>${modelName}</strong>
-							${model.description ? `<div class="text-muted">${model.description}</div>` : ''}
+							<strong>\${modelName}</strong>
+							\${model.description ? \`<div class="text-muted">\${model.description}</div>\` : ''}
 						</div>
 						<table class="model-properties table table-sm">
-							${model.properties ? Object.entries(model.properties).map(([name, prop]) => `
+							\${model.properties ? Object.entries(model.properties).map(([name, prop]) => \`
 								<tr>
 									<td width="25%" class="font-monospace">
-										${name}
-										${model.required?.includes(name) ? '<span class="text-danger ms-1">*</span>' : ''}
+										\${name}
+										\${model.required && model.required.includes(name) ? '<span class="text-danger ms-1">*</span>' : ''}
 									</td>
 									<td width="35%">
-										${renderType(prop, definitions)}
+										\${renderType(prop, definitions)}
 									</td>
 									<td>
-										${prop.description || '-'}
-										${prop.format ? `<span class="text-muted">(Format: ${prop.format})</span>` : ''}
+										\${prop.description || '-'}
+										\${prop.format ? \`<span class="text-muted">(Format: \${prop.format})</span>\` : ''}
 									</td>
 								</tr>
-							`).join('') : '<tr><td colspan="3">无属性定义</td></tr>'}
+							\`).join('') : '<tr><td colspan="3">无属性定义</td></tr>'}
 						</table>
 						<div class="dto-ref-container mt-2"></div>
 					</div>
-				`;
+				\`;
 			}
 
 			function renderType(prop, definitions, level = 0) {
 				// 处理引用类型
 				if (prop.$ref) {
 					const refKey = prop.$ref.replace('#/definitions/', '');
-					return `
-						<span class="dto-ref" data-ref="${refKey}">
-							${refKey}
+					return \`
+						<span class="dto-ref" data-ref="\${refKey}">
+							\${refKey}
 							<span class="badge bg-secondary ms-1">ref</span>
 						</span>
-					`;
+					\`;
 				}
 
 				// 处理数组类型
 				if (prop.type === 'array') {
-					return `
+					return \`
 						<div class="array-type">
 							Array&lt;
-							<span class="array-items">${renderType(prop.items, definitions, level + 1)}</span>
+							<span class="array-items">\${renderType(prop.items, definitions, level + 1)}</span>
 							&gt;
 						</div>
-					`;
+					\`;
 				}
 
 				// 处理对象类型
 				if (prop.type === 'object' && prop.properties) {
-					return `
+					return \`
 						<div class="object-type">
-							{${Object.keys(prop.properties).length} fields}
+							{\${Object.keys(prop.properties).length} fields}
 							<button class="btn btn-sm btn-outline-secondary ms-1 toggle-details"
-								data-level="${level}">▶</button>
-							<div class="object-details" style="display:none;margin-left:${level * 15}px">
-								${renderProperties(prop.properties, definitions, prop.required, level + 1)}
+								data-level="\${level}">▶</button>
+							<div class="object-details" style="display:none;margin-left:\${level * 15}px">
+								\${renderProperties(prop.properties, definitions, prop.required, level + 1)}
 							</div>
 						</div>
-					`;
+					\`;
 				}
 
 				// 基本类型处理
 				let display = prop.type || 'any';
-				if (prop.format) display += ` <small class="text-muted">(${prop.format})</small>`;
-				if (prop.enum) display += ` <span class="badge bg-info">enum</span>`;
+				if (prop.format) display += \` <small class="text-muted">(\${prop.format})</small>\`;
+				if (prop.enum) display += \` <span class="badge bg-info">enum</span>\`;
 				return display;
 			}
 
@@ -1091,16 +1100,16 @@
 			function resolveType(schema, definitions, isRequest = false) {
 				if (schema.$ref) {
 					const refKey = schema.$ref.replace('#/definitions/', '');
-					return `
-						<code class="${isRequest ? 'request-dto-toggle' : 'dto-toggle'} text-primary" data-ref="${refKey}">
-							${refKey}
+					return \`
+						<code class="\${isRequest ? 'request-dto-toggle' : 'dto-toggle'} text-primary" data-ref="\${refKey}">
+							\${refKey}
 						</code>
-					`;
+					\`;
 				}
-				return schema.type || (schema.enum ? `enum: ${schema.enum.join('|')}` : 'any');
+				return schema.type || (schema.enum ? \`enum: \${schema.enum.join('|')}\` : 'any');
 			}
 
 			initSwaggerPreview();
 		</script>
 	</body>
-</html>
+</html>`;
