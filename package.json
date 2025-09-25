@@ -3,7 +3,7 @@
   "publisher": "xdf-va",
   "displayName": "Va Swagger to API(vue2)",
   "description": "Generate TypeScript API client code from Swagger/OpenAPI v2 documentation with incremental updates support",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": "xdf-va",
   "license": "ICT",
   "icon": "resources/icon.png",

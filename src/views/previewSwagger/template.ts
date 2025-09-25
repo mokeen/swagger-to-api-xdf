@@ -352,7 +352,7 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 			</div>
 		</div>
 
-		<div class="toast-container position-fixed end-0 p-3">
+		<div class="toast-container position-fixed top-0 end-0 p-3">
 			<div id="liveToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
 				<div class="toast-header">
 					<strong class="me-auto">提示</strong>
@@ -409,6 +409,31 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 				}
 			}
 
+			// 清除所有筛选内容的函数
+			function clearAllFilters() {
+				// 清除Controller级别的筛选
+				const cSearchInput = document.querySelector('#controller-toolbar .controller-search-input');
+				if (cSearchInput) {
+					cSearchInput.value = '';
+					// 显示所有Controller
+					document.querySelectorAll('#controllerAccordion .accordion-item').forEach(item => {
+						item.style.display = '';
+					});
+				}
+
+				// 清除所有API级别的筛选
+				document.querySelectorAll('.api-search-input').forEach(input => {
+					input.value = '';
+					// 显示对应Controller下的所有API
+					const accordionBody = input.closest('.accordion-body');
+					if (accordionBody) {
+						accordionBody.querySelectorAll('.list-group-item').forEach(item => {
+							item.style.display = '';
+						});
+					}
+				});
+			}
+
 			refreshBtn.addEventListener('click', handleRefreshDoc);
 
 			exportBtn.addEventListener('click', handleExportDoc);
@@ -422,6 +447,9 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 					<span class="spinner-border spinner-border-sm" role="status"></span>
 					刷新中...
 				\`;
+
+				// 清除所有筛选内容
+				clearAllFilters();
 
 				vscode.postMessage({
 					command: 'refreshSwaggerDoc',

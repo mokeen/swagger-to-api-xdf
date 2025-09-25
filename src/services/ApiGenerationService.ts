@@ -43,14 +43,14 @@ export class ApiGenerationService {
 					// 从路径模板中提取实际路径
 					const apiPath = pathTemplate.replace('${basePath}', '');
 
-				// 应用与生成时相同的方法名清理逻辑
-				const cleanMethodName = methodName.replace(/Using(POST|GET|PUT|DELETE|PATCH|HEAD|OPTIONS)(_\d+)?$/i, '') || methodName;
+				// 解析新格式的方法名：{baseName}_{httpMethod}_{pathHash}
+				const originalOperationId = this.parseMethodNameToOperationId(methodName, apiPath, httpMethod);
 
 					methods.push({
-						operationId: cleanMethodName,
+						operationId: originalOperationId,
 						path: apiPath,
 						method: httpMethod,
-						summary: cleanMethodName, // 使用清理后的方法名作为fallback
+						summary: originalOperationId, // 使用解析后的operationId作为fallback
 						// 注意：这里我们无法完全恢复原始的swagger数据，但足够用于排序和生成
 					});
 				}
@@ -75,18 +75,26 @@ export class ApiGenerationService {
 	public static mergeApiData(existingApiData: { [controller: string]: any[] }, selectedApis: { [controller: string]: any[] }): { [controller: string]: any[] } {
 		const mergedData: { [controller: string]: any[] } = {};
 
-		// 首先添加所有已存在的API数据
+		// 创建控制器名称标准化函数
+		const normalizeControllerName = (name: string) => {
+			const clean = (name || '').replace(/Controller$/i, '').replace(/[^a-zA-Z0-9_]/g, ' ').split(/\s+/).filter(Boolean).map(s => s[0].toUpperCase() + s.slice(1)).join('');
+			return `${clean}Controller`;
+		};
+
+		// 首先添加所有已存在的API数据（使用标准化的控制器名）
 		for (const [controller, apis] of Object.entries(existingApiData)) {
-			mergedData[controller] = [...apis];
+			const normalizedName = normalizeControllerName(controller);
+			mergedData[normalizedName] = [...apis];
 		}
 
-		// 然后处理新选择的API，覆盖或添加
+		// 然后处理新选择的API，覆盖或添加（同样使用标准化的控制器名）
 		for (const [controller, newApis] of Object.entries(selectedApis)) {
-			if (!mergedData[controller]) {
-				mergedData[controller] = [];
+			const normalizedName = normalizeControllerName(controller);
+			if (!mergedData[normalizedName]) {
+				mergedData[normalizedName] = [];
 			}
 
-			const existingApis = mergedData[controller];
+			const existingApis = mergedData[normalizedName];
 			let updatedCount = 0;
 			let addedCount = 0;
 
@@ -116,7 +124,7 @@ export class ApiGenerationService {
 			}
 		});
 
-			mergedData[controller] = existingApis;
+			mergedData[normalizedName] = existingApis;
 		}
 
 		// 对合并后的数据进行排序
@@ -281,42 +289,60 @@ export class ApiGenerationService {
 	}
 
 	private static toMethodName(api: any, existingNames: Set<string> = new Set()): string {
+		// 1. 获取清理后的基础名称
 		let baseName = '';
-
 		if (api.operationId) {
-			// 移除 UsingPOST_数字 这样的后缀，但保持原始名称以避免重复
+			// 移除 UsingPOST_数字 这样的后缀
 			baseName = api.operationId.replace(/Using(POST|GET|PUT|DELETE|PATCH|HEAD|OPTIONS)(_\d+)?$/i, '') || api.operationId;
 		} else {
+			// 如果没有 operationId，根据路径和方法生成
 			const pathParts = (api.path || '').split('/').filter(Boolean);
 			const lastPart = pathParts[pathParts.length - 1] || 'unknown';
 			const method = String(api.method || 'get').toLowerCase();
 			baseName = `${method}${lastPart.charAt(0).toUpperCase()}${lastPart.slice(1)}`;
 		}
 
-		// 如果方法名不重复，直接返回
-		if (!existingNames.has(baseName)) {
-			existingNames.add(baseName);
-			return baseName;
+		// 2. 生成路径的短哈希值（确保唯一性和可逆性）
+		const pathHash = this.generatePathHash(api.path || '');
+
+		// 3. 组合生成最终方法名：{baseName}_{pathHash}
+		const methodName = `${baseName}_${pathHash}`;
+
+		existingNames.add(methodName);
+		return methodName;
+	}
+
+	/**
+	 * 为路径生成短哈希值
+	 * 使用简单的哈希算法确保相同路径得到相同哈希值
+	 */
+	private static generatePathHash(path: string): string {
+		let hash = 0;
+		for (let i = 0; i < path.length; i++) {
+			const char = path.charCodeAt(i);
+			hash = ((hash << 5) - hash) + char;
+			hash = hash & hash; // 转换为32位整数
+		}
+		// 转换为6位的16进制字符串
+		return Math.abs(hash).toString(16).substring(0, 6).padStart(6, '0');
+	}
+
+	/**
+	 * 从生成的方法名解析出原始的operationId
+	 * 方法名格式：{baseName}_{pathHash}
+	 */
+	private static parseMethodNameToOperationId(methodName: string, apiPath: string, httpMethod: string): string {
+		// 计算当前路径的哈希值
+		const expectedHash = this.generatePathHash(apiPath);
+		const expectedSuffix = `_${expectedHash}`;
+
+		// 如果方法名符合新格式，提取baseName
+		if (methodName.endsWith(expectedSuffix)) {
+			return methodName.substring(0, methodName.length - expectedSuffix.length);
 		}
 
-		// 如果重复，添加路径信息来区分
-		const pathParts = (api.path || '').split('/').filter(Boolean);
-		// 取路径的最后两段来生成更具描述性的名称
-		const pathSuffix = pathParts.slice(-2).map((part: string) =>
-			part.charAt(0).toUpperCase() + part.slice(1).replace(/[^a-zA-Z0-9]/g, '')
-		).join('');
-
-		let uniqueName = baseName + pathSuffix;
-		let counter = 1;
-
-		// 如果还是重复，添加数字后缀
-		while (existingNames.has(uniqueName)) {
-			uniqueName = baseName + pathSuffix + counter;
-			counter++;
-		}
-
-		existingNames.add(uniqueName);
-		return uniqueName;
+		// 如果不符合新格式，可能是旧格式，应用旧的清理逻辑
+		return methodName.replace(/Using(POST|GET|PUT|DELETE|PATCH|HEAD|OPTIONS)(_\d+)?$/i, '') || methodName;
 	}
 
 	private static resolveRequestType(spec: any, api: any): string {
