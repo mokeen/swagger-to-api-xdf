@@ -643,6 +643,20 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 						// 仅在首次展开时加载
 						if (!accordionBody.querySelector('.list-group')) {
 							loadTagApis(tagName);
+						} else {
+							// 如果已经加载过，直接标记已存在的API
+							if (existingApiData && Object.keys(existingApiData).length > 0) {
+								const normalizeControllerName = (name) => {
+									const clean = (name || '').replace(/Controller$/i, '').replace(/[^a-zA-Z0-9_]/g, ' ').split(' ').filter(Boolean).map(s => s[0].toUpperCase() + s.slice(1)).join('');
+									return clean + 'Controller';
+								};
+								const normalizedTagName = normalizeControllerName(tagName);
+								Object.entries(existingApiData).forEach(([controllerName, apis]) => {
+									if (normalizedTagName === controllerName) {
+										markApiItemsInController(accordionBody, apis);
+									}
+								});
+							}
 						}
 
 						// 等待折叠面板完成展开后再对齐，避免高度变化导致偏差
@@ -966,27 +980,31 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 					searchInput.addEventListener('input', () => applyFilter(searchInput.value));
 				}
 				if (searchClear) {
-						searchClear.addEventListener('click', () => {
-							searchInput.value = '';
-							applyFilter('');
-						});
-					}
-
-					// 标识当前控制器中的已存在API
-					if (existingApiData && Object.keys(existingApiData).length > 0) {
-						// 查找匹配的控制器数据并标记
-						Object.entries(existingApiData).forEach(([controllerName, apis]) => {
-							const isMatchingController = tagName === controllerName ||
-								tagName === controllerName.replace(/([A-Z])/g, (match, letter, index) => {
-									return index === 0 ? letter.toLowerCase() : '-' + letter.toLowerCase();
-								}).replace(/Controller$/, '');
-
-							if (isMatchingController) {
-								markApiItemsInController(accordionBody, apis);
-							}
-						});
-					}
+					searchClear.addEventListener('click', () => {
+						searchInput.value = '';
+						applyFilter('');
+					});
 				}
+
+				// 标识当前控制器中的已存在API
+				if (existingApiData && Object.keys(existingApiData).length > 0) {
+					// 使用与后端相同的标准化逻辑
+					const normalizeControllerName = (name) => {
+						const clean = (name || '').replace(/Controller$/i, '').replace(/[^a-zA-Z0-9_]/g, ' ').split(' ').filter(Boolean).map(s => s[0].toUpperCase() + s.slice(1)).join('');
+						return clean + 'Controller';
+					};
+
+					// 将当前tagName标准化
+					const normalizedTagName = normalizeControllerName(tagName);
+
+					// 查找匹配的控制器数据并标记
+					Object.entries(existingApiData).forEach(([controllerName, apis]) => {
+						if (normalizedTagName === controllerName) {
+							markApiItemsInController(accordionBody, apis);
+						}
+					});
+				}
+			}
 
 			function isSameDtoContent(refKey, newContent, container) {
 				const existingDetails = container.querySelector(\`.dto-ref-details[data-ref="\${refKey}"]\`);
@@ -1211,21 +1229,22 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 					return;
 				}
 
+				// 使用与后端相同的标准化逻辑
+				const normalizeControllerName = (name) => {
+					const clean = (name || '').replace(/Controller$/i, '').replace(/[^a-zA-Z0-9_]/g, ' ').split(' ').filter(Boolean).map(s => s[0].toUpperCase() + s.slice(1)).join('');
+					return clean + 'Controller';
+				};
+
 				// 只处理当前展开的控制器
 				const expandedAccordions = document.querySelectorAll('.accordion-collapse.show .accordion-body[data-tag]');
 
 				expandedAccordions.forEach(accordionBody => {
 					const tagName = accordionBody.getAttribute('data-tag');
+					const normalizedTagName = normalizeControllerName(tagName);
 
 					// 查找匹配的控制器数据
 					Object.entries(existingApiData).forEach(([controllerName, apis]) => {
-						// 匹配控制器名称
-						const isMatchingController = tagName === controllerName ||
-							tagName === controllerName.replace(/([A-Z])/g, (match, letter, index) => {
-								return index === 0 ? letter.toLowerCase() : '-' + letter.toLowerCase();
-							}).replace(/Controller$/, '');
-
-						if (isMatchingController) {
+						if (normalizedTagName === controllerName) {
 							markApiItemsInController(accordionBody, apis);
 						}
 					});

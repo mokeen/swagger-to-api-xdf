@@ -19,8 +19,8 @@ export class ApiGenerationService {
 			const apisContent = fs.readFileSync(apisFilePath, 'utf-8');
 			const existingApiData: { [controller: string]: any[] } = {};
 
-			// 提取控制器和对应的方法
-			const controllerRegex = /export const (\w+Controller) = \{([\s\S]*?)\n\};\s*$/gm;
+			// 提取控制器和对应的方法（支持类型注解）
+			const controllerRegex = /export const (\w+Controller)(?::\s*Types\.\w+)?\s*=\s*\{([\s\S]*?)\n\};\s*$/gm;
 			let controllerMatch;
 
 			while ((controllerMatch = controllerRegex.exec(apisContent)) !== null) {
@@ -220,54 +220,16 @@ export class ApiGenerationService {
 				paths: filteredPaths
 			};
 
-			// 5. 解析 get 参数（到interface）
-			const getParamInterfaces: Record<string, { fields: { name: string; type: string; required: boolean; desc?: string }[]; desc?: string }> = {};
-			Object.entries(filteredPaths).forEach(([pathStr, methods]) => {
-				Object.entries<any>(methods).forEach(([method, operation]) => {
-					if (method.toLowerCase() === 'get') {
-						const iface = ApiGenerationService.paramInterfaceName({ path: pathStr, method, ...operation });
-						const fields: { name: string; type: string; required: boolean; desc?: string }[] = [];
-
-						// Query 参数
-						const queryParams = (operation.parameters || []).filter((p: any) => p.in === 'query');
-						queryParams.forEach((p: any) => {
-							const tsType = this.mapPrimitiveType(p.type || p.schema?.type || 'any', p.format);
-							fields.push({
-								name: p.name,
-								type: tsType,
-								required: p.required || false,
-								desc: p.description
-							});
-						});
-
-						// Path 参数
-						const pathParams = (operation.parameters || []).filter((p: any) => p.in === 'path');
-						pathParams.forEach((p: any) => {
-							const tsType = this.mapPrimitiveType(p.type || p.schema?.type || 'any', p.format);
-							fields.push({
-								name: p.name,
-								type: tsType,
-								required: true, // path 参数都是必须的
-								desc: p.description
-							});
-						});
-
-						getParamInterfaces[iface] = {
-							fields,
-							desc: operation.summary || operation.description
-						};
-					}
-				});
-			});
+			// GET 参数不再生成接口，直接内联在方法中
 
 			// 6. 生成 types.ts（完整重建）
 			const typesPath = path.join(docDir, "types.ts");
-			const typesContent = ApiGenerationService.renderTypes(spec, getParamInterfaces);
+			const typesContent = ApiGenerationService.renderTypes(spec, mergedApiData);
 			fs.writeFileSync(typesPath, typesContent, "utf-8");
 
 			// 7. 生成 apis.ts（使用合并后的数据完整重建）
 			const apisPath = path.join(docDir, "apis.ts");
-			const apisContent = ApiGenerationService.renderApis(mergedApiData, spec, getParamInterfaces);
+			const apisContent = ApiGenerationService.renderApis(mergedApiData, spec);
 			fs.writeFileSync(apisPath, apisContent, "utf-8");
 
 			// 8. 写 index.ts
@@ -358,6 +320,140 @@ export class ApiGenerationService {
 		return this.tsTypeFromSchema(bodyParam.schema);
 	}
 
+	private static resolveResponseTypeForTypes(spec: any, api: any): string {
+		const op = spec?.paths?.[api.path]?.[String(api.method).toLowerCase()];
+		if (!op) return 'any';
+		const responses = op?.responses || {};
+		const ok = responses['200'] || responses['201'] || responses['default'];
+		const schema = ok?.schema;
+		if (!schema) return 'void';
+		if (schema.$ref) {
+			const name = this.refName(schema.$ref) || '';
+			const listInner = this.extractListInner(name);
+			// Result<...>
+			if (/^Result/.test(name)) {
+				if (listInner) return `Result<${listInner}[]>`;
+				const def = spec.definitions?.[name];
+				const data = def?.properties?.data;
+				if (data?.$ref) {
+					const innerName = this.refName(data.$ref) || '';
+					const listFromInner = this.extractInnerFromListName(innerName);
+					if (listFromInner) return `Result<${listFromInner}[]>`;
+					// PageResultDTO<Inner> or PageResult<Inner>
+					const prDtoInner = this.extractGenericInner(innerName, 'PageResultDTO');
+					if (prDtoInner) return `Result<PageResult<${prDtoInner}[]>>`;
+					const prInner = this.extractGenericInner(innerName, 'PageResult');
+					if (prInner) return `Result<PageResult<${prInner}>>`;
+					const basePageInner = this.extractGenericInner(innerName, 'BasePageRespDTO');
+					if (basePageInner) return `Result<BasePageRespDTO<${basePageInner}>>`;
+					// Fallback to $ref type
+					const t = this.tsTypeFromSchemaForTypes({ $ref: data.$ref });
+					return `Result<${t}>`;
+				}
+				if (data?.type === 'array') {
+					const itemSchema = data.items || { type: 'any' };
+					const itemTs = this.tsTypeFromSchemaForTypes(itemSchema);
+					return `Result<${itemTs}[]>`;
+				}
+				if (data?.type) {
+					const t = this.mapPrimitiveType(data.type, data.format);
+					return `Result<${t}>`;
+				}
+				return `Result<void>`;
+			}
+			// PageResultDTO<Inner>
+			if (/^PageResultDTO/.test(name)) {
+				const inner = this.extractGenericInner(name, 'PageResultDTO');
+				if (inner) return `PageResult<${inner}[]>`;
+				const def = spec.definitions?.[name];
+				const coll = def?.properties?.records || def?.properties?.list || def?.properties?.rows || def?.properties?.data;
+				if (coll?.items?.$ref) {
+					const innerType = this.tsTypeFromSchemaForTypes({ $ref: coll.items.$ref });
+					return `PageResult<${innerType}[]>`;
+				}
+				return `PageResult<any[]>`;
+			}
+			// PageResult<Inner>
+			if (/^PageResult/.test(name)) {
+				const inner = this.extractGenericInner(name, 'PageResult');
+				if (inner) return `PageResult<${inner}>`;
+				return `PageResult<any>`;
+			}
+			// BasePageRespDTO<Inner>
+			if (/^BasePageRespDTO/.test(name)) {
+				const inner = this.extractGenericInner(name, 'BasePageRespDTO');
+				if (inner) return `BasePageRespDTO<${inner}>`;
+				return `BasePageRespDTO<any>`;
+			}
+			// ReplyEntity<...>
+			if (/^ReplyEntity/.test(name)) {
+				if (listInner) return `ReplyEntity<${listInner}[]>`;
+				const def = spec.definitions?.[name];
+				const data = def?.properties?.data;
+				if (data?.$ref) {
+					const t = this.tsTypeFromSchemaForTypes({ $ref: data.$ref });
+					return `ReplyEntity<${t}>`;
+				}
+				if (data?.type === 'array') {
+					const itemSchema = data.items || { type: 'any' };
+					const itemTs = this.tsTypeFromSchemaForTypes(itemSchema);
+					return `ReplyEntity<${itemTs}[]>`;
+				}
+				if (data?.type) {
+					const t = this.mapPrimitiveType(data.type, data.format);
+					return `ReplyEntity<${t}>`;
+				}
+				return `ReplyEntity<void>`;
+			}
+			// Page.*RespDTO 模式处理
+			const pageRespMatch = name.match(/^Page(.+)RespDTO$/);
+			if (pageRespMatch) {
+				const innerType = pageRespMatch[1];
+				return `PageResult<${innerType}[]>`;
+			}
+			// Fallback to direct type reference
+			return this.tsTypeFromSchemaForTypes(schema);
+		}
+		if (schema.type === 'array') {
+			const itemTs = this.tsTypeFromSchemaForTypes(schema.items || { type: 'any' });
+			return `${itemTs}[]`;
+		}
+		if (schema.type) {
+			return this.mapPrimitiveType(schema.type, schema.format);
+		}
+		return 'any';
+	}
+
+	private static resolveRequestTypeForTypes(spec: any, api: any): string {
+		if (!api?.parameters || !Array.isArray(api.parameters)) {
+			return 'any';
+		}
+
+		const bodyParam = api.parameters.find((p: any) => p.in === 'body');
+		if (!bodyParam?.schema) {
+			return 'any';
+		}
+
+		return this.tsTypeFromSchemaForTypes(bodyParam.schema);
+	}
+
+	private static tsTypeFromSchemaForTypes(sch: any, expandRef = false): string {
+		if (!sch) return 'any';
+		if (sch.$ref) {
+			const name = this.refName(sch.$ref);
+			if (!name) return 'any';
+			return name; // 在 types.ts 内部，直接使用类型名，不加 Types. 前缀
+		}
+		if (sch.type === 'array') {
+			const itemTs = this.tsTypeFromSchemaForTypes(sch.items || { type: 'any' }, expandRef);
+			return `${itemTs}[]`;
+		}
+		if (sch.type) {
+			return this.mapPrimitiveType(sch.type, sch.format);
+		}
+		return 'any';
+	}
+
 	private static resolveResponseType(spec: any, api: any): string {
 		const op = spec?.paths?.[api.path]?.[String(api.method).toLowerCase()];
 		if (!op) return 'any';
@@ -413,6 +509,14 @@ export class ApiGenerationService {
 			if (/^PageResult/.test(name)) {
 				const inner = this.extractGenericInner(name, 'PageResult');
 				if (inner) return `Types.PageResult<${inner}>`;
+				const def = spec.definitions?.[name];
+				const coll = def?.properties?.records || def?.properties?.list || def?.properties?.rows || def?.properties?.data;
+				const items = coll?.items;
+				const itemTs = this.tsTypeFromSchema(items || { type: 'object' });
+				return `Types.PageResult<${itemTs}>`;
+			}
+			// Page.*RespDTO 模式
+			if (/^Page.*RespDTO$/.test(name)) {
 				const def = spec.definitions?.[name];
 				const coll = def?.properties?.records || def?.properties?.list || def?.properties?.rows || def?.properties?.data;
 				const items = coll?.items;
@@ -540,6 +644,7 @@ export class ApiGenerationService {
 	private static mapPrimitiveType(type?: string, format?: string): string {
 		if (!type) return 'any';
 		if (type === 'integer' || type === 'number') return 'number';
+		if (type === 'long' || (type === 'integer' && format === 'int64')) return 'number';
 		if (type === 'boolean') return 'boolean';
 		if (type === 'string') return 'string';
 		if (type === 'array') return 'any[]';
@@ -547,11 +652,13 @@ export class ApiGenerationService {
 		return 'any';
 	}
 
-	private static renderTypes(spec: any, getParamInterfaces: Record<string, any>): string {
+	private static renderTypes(spec: any, selectedApis?: { [controller: string]: any[] }): string {
 		const lines: string[] = [];
 		lines.push(`/* eslint-disable */`);
 		lines.push(`// @ts-nocheck`);
 		lines.push(`// This file is auto-generated by va-swagger-to-api plugin`);
+		lines.push('');
+		lines.push(`import type { AxiosRequestConfig } from 'axios';`);
 		lines.push('');
 
 		// 通用泛型
@@ -563,9 +670,64 @@ export class ApiGenerationService {
 		lines.push(`export type PlainObject = { [key: string]: any }`);
 		lines.push('');
 
+		// 收集被选中API使用的类型
+		const usedTypes = new Set<string>();
+		if (selectedApis) {
+			const collectTypesFromSchema = (schema: any) => {
+				if (schema?.$ref) {
+					const typeName = schema.$ref.replace('#/definitions/', '');
+					if (!usedTypes.has(typeName)) {
+						usedTypes.add(typeName);
+						// 递归收集依赖类型
+						const typeDef = spec.definitions?.[typeName];
+						if (typeDef) {
+							if (typeDef.properties) {
+								Object.values(typeDef.properties).forEach((prop: any) => collectTypesFromSchema(prop));
+							}
+							if (typeDef.allOf) {
+								typeDef.allOf.forEach((item: any) => collectTypesFromSchema(item));
+							}
+							if (typeDef.items) {
+								collectTypesFromSchema(typeDef.items);
+							}
+						}
+					}
+				}
+				if (schema?.items) {
+					collectTypesFromSchema(schema.items);
+				}
+				if (schema?.properties) {
+					Object.values(schema.properties).forEach((prop: any) => collectTypesFromSchema(prop));
+				}
+			};
+
+			// 从 spec.paths 收集类型（已经过滤的paths）
+			if (spec.paths) {
+				Object.values(spec.paths).forEach((pathMethods: any) => {
+					Object.values(pathMethods).forEach((operation: any) => {
+						// 收集请求参数类型
+						if (operation.parameters) {
+							operation.parameters.forEach((param: any) => {
+								if (param.schema) collectTypesFromSchema(param.schema);
+							});
+						}
+						// 收集响应类型
+						if (operation.responses) {
+							Object.values(operation.responses).forEach((resp: any) => {
+								if (resp.schema) collectTypesFromSchema(resp.schema);
+							});
+						}
+					});
+				});
+			}
+		}
+
 		for (const [name, def] of Object.entries<any>(spec.definitions || {})) {
 			// 跳过包装定义：不输出到 types.ts，但保留在内存用于响应类型解析
-			if (/^(Result|PageResult|BasePageRespDTO|ReplyEntity)/.test(name)) continue;
+			if (/^(Result|PageResult|BasePageRespDTO|ReplyEntity|Page.*RespDTO|.*PageRespDTO)/.test(name)) continue;
+
+			// 如果提供了selectedApis，只生成被使用的类型
+			if (selectedApis && !usedTypes.has(name)) continue;
 
 			const required = new Set<string>(def.required || []);
 			const ifaceDesc = def.description || '';
@@ -606,23 +768,101 @@ export class ApiGenerationService {
 			lines.push('');
 		}
 
-		// 添加 GET 参数接口
-		Object.entries(getParamInterfaces).forEach(([ifaceName, meta]) => {
-			lines.push(`export interface ${ifaceName} {`);
-			meta.fields.forEach((field: any) => {
-				const optional = field.required ? '' : '?';
-				const comment = field.desc ? ` // ${field.desc}` : '';
-				lines.push(`  ${field.name}${optional}: ${field.type};${comment}`);
-			});
-			lines.push(`}`);
-			lines.push('');
-		});
+		// 不再生成 GET 参数接口，参数直接内联在方法中
+
+		// 添加 Controller 类型声明
+		if (selectedApis && Object.keys(selectedApis).length > 0) {
+			const sortedControllers = Object.keys(selectedApis).sort((a, b) =>
+				a.localeCompare(b, "zh-CN")
+			);
+
+			for (const tag of sortedControllers) {
+				const apis = selectedApis[tag];
+				const clean = (tag || '').replace(/Controller$/i, '').replace(/[^a-zA-Z0-9_]/g, ' ').split(/\s+/).filter(Boolean).map(s => s[0].toUpperCase() + s.slice(1)).join('');
+				const controllerConst = `${clean}Controller`;
+				const controllerType = `${clean}ControllerType`;
+
+				// 查找对应的tag描述
+				// 需要将标准化的controller名称转换回原始的tag名称进行匹配
+				let tagInfo = spec.tags?.find((t: any) => t.name === tag);
+
+				// 如果直接匹配不到，尝试将controller名称转换为kebab-case格式匹配
+				if (!tagInfo && spec.tags) {
+					// 将 ApprovalOrderController 转换为 approval-order-controller
+					const kebabCaseTag = tag
+						.replace(/([A-Z])/g, (match, letter, index) => {
+							return index === 0 ? letter.toLowerCase() : '-' + letter.toLowerCase();
+						});
+
+					tagInfo = spec.tags.find((t: any) => t.name === kebabCaseTag);
+				}
+
+				const tagDescription = tagInfo?.description;
+
+				if (tagDescription) {
+					lines.push(`/** ${tagDescription} */`);
+				}
+				lines.push(`export interface ${controllerType} {`);
+
+				// 按照 operationId 排序
+				const sortedApis = [...(apis || [])].sort((a, b) => {
+					const aId = a.operationId || a.summary || (a.path ? a.path.split('/').pop() : '');
+					const bId = b.operationId || b.summary || (b.path ? b.path.split('/').pop() : '');
+					return aId.localeCompare(bId, "zh-CN");
+				});
+
+				// 用于跟踪已使用的方法名，确保唯一性
+				const existingMethodNames = new Set<string>();
+
+				sortedApis.forEach((api: any) => {
+					const methodName = ApiGenerationService.toMethodName(api, existingMethodNames);
+					const isGet = String(api.method).toLowerCase() === 'get';
+					const respType = ApiGenerationService.resolveResponseTypeForTypes(spec, api);
+
+					if (isGet) {
+						// 从 Swagger 规范中获取参数信息
+						const params = api.parameters || [];
+						const queryParams = params.filter((p: any) => p.in === 'query');
+						const pathParams = params.filter((p: any) => p.in === 'path');
+						const allParams = [...pathParams, ...queryParams]; // path 参数在前，query 参数在后
+
+						// 生成内联参数列表
+						const paramList = allParams.map((p: any) => {
+							const optional = (p.in === 'path' || p.required) ? '' : '?'; // path 参数必须，query 参数看 required
+							// 优先使用 schema，如果没有则使用 type 和 format
+							const paramType = p.schema ?
+								this.tsTypeFromSchemaForTypes(p.schema, true) :
+								this.mapPrimitiveType(p.type || 'string', p.format);
+							return `${p.name}${optional}: ${paramType}`;
+						});
+
+						const argList = paramList.join(', ');
+						const axiosParam = argList ? ', axiosConfig?: AxiosRequestConfig' : 'axiosConfig?: AxiosRequestConfig';
+						// 使用接口的 summary 作为注释
+						if (api.summary) {
+							lines.push(`  /** ${api.summary} */`);
+						}
+						lines.push(`  ${methodName}(${argList}${axiosParam}): Promise<${respType}>;`);
+					} else {
+						const reqType = ApiGenerationService.resolveRequestTypeForTypes(spec, api);
+						// 使用接口的 summary 作为注释
+						if (api.summary) {
+							lines.push(`  /** ${api.summary} */`);
+						}
+						lines.push(`  ${methodName}(req: ${reqType}, axiosConfig?: AxiosRequestConfig): Promise<${respType}>;`);
+					}
+				});
+
+				lines.push(`}`);
+				lines.push('');
+			}
+		}
 
 		return lines.join('\n');
 	}
 
 
-	private static renderApis(selectedApis: { [controller: string]: any[] }, spec: any, getParamInterfaces: Record<string, { fields: { name: string; type: string; required: boolean; desc?: string }[]; desc?: string }>): string {
+	private static renderApis(selectedApis: { [controller: string]: any[] }, spec: any): string {
 		const lines: string[] = [];
 		lines.push(`/* eslint-disable */`);
 		lines.push(`// @ts-nocheck`);
@@ -650,7 +890,8 @@ export class ApiGenerationService {
 			const apis = selectedApis[tag];
 			const clean = (tag || '').replace(/Controller$/i, '').replace(/[^a-zA-Z0-9_]/g, ' ').split(/\s+/).filter(Boolean).map(s => s[0].toUpperCase() + s.slice(1)).join('');
 			const controllerConst = `${clean}Controller`;
-			lines.push(`export const ${controllerConst} = {`);
+			const controllerType = `${clean}ControllerType`;
+			lines.push(`export const ${controllerConst}: Types.${controllerType} = {`);
 
 			// 按照 operationId 排序
 			const sortedApis = [...(apis || [])].sort((a, b) => {
@@ -669,10 +910,27 @@ export class ApiGenerationService {
 				const pathExpr = '${basePath}' + String(api.path);
 
 				if (isGet) {
-					const iface = ApiGenerationService.paramInterfaceName(api);
-					const paramsMeta = getParamInterfaces[iface];
-					const argList = paramsMeta ? paramsMeta.fields.map(f => `${f.name}: ${f.type}`).join(', ') : '';
-					const payloadObj = paramsMeta ? `{ ${paramsMeta.fields.map(f => f.name).join(', ')} }` : `{}`;
+					// 从 Swagger 规范中获取参数信息
+					const params = api.parameters || [];
+					const queryParams = params.filter((p: any) => p.in === 'query');
+					const pathParams = params.filter((p: any) => p.in === 'path');
+					const allParams = [...pathParams, ...queryParams]; // path 参数在前，query 参数在后
+
+					// 生成内联参数列表
+					const paramList = allParams.map((p: any) => {
+						const optional = (p.in === 'path' || p.required) ? '' : '?'; // path 参数必须，query 参数看 required
+						// 优先使用 schema，如果没有则使用 type 和 format
+						const paramType = p.schema ?
+							this.tsTypeFromSchema(p.schema, true) :
+							this.mapPrimitiveType(p.type || 'string', p.format);
+						return `${p.name}${optional}: ${paramType}`;
+					});
+
+					const argList = paramList.join(', ');
+					const payloadObj = queryParams.length > 0 ?
+						`{ ${queryParams.map((p: any) => p.name).join(', ')} }` :
+						`{}`;
+
 					lines.push(`  async ${methodName}(${argList}${argList ? ', ' : ''}axiosConfig?: AxiosRequestConfig): Promise<${respType}> {`);
 					lines.push(`    const path = \`${pathExpr}\`;`);
 					lines.push(`    const payload: Types.BaseRequestDTO = ${payloadObj};`);
