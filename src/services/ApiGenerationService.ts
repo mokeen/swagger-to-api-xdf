@@ -220,21 +220,20 @@ export class ApiGenerationService {
 				paths: filteredPaths
 			};
 
-			// GET 参数不再生成接口，直接内联在方法中
-
-			// 6. 生成 types.ts（完整重建）
+			// 5. 生成 types.ts（完整重建）
 			const typesPath = path.join(docDir, "types.ts");
 			const typesContent = ApiGenerationService.renderTypes(spec, mergedApiData);
 			fs.writeFileSync(typesPath, typesContent, "utf-8");
 
-			// 7. 生成 apis.ts（使用合并后的数据完整重建）
+			// 6. 生成 apis.ts（使用合并后的数据完整重建）
 			const apisPath = path.join(docDir, "apis.ts");
 			const apisContent = ApiGenerationService.renderApis(mergedApiData, spec);
 			fs.writeFileSync(apisPath, apisContent, "utf-8");
 
-			// 8. 写 index.ts
+			// 7. 写 index.ts（使用命名空间导出以支持更好的类型推导）
 			const indexPath = path.join(docDir, "index.ts");
-			fs.writeFileSync(indexPath, `export * from './types';\nexport * from './apis';\n`, "utf-8");
+			const indexContent = `/* eslint-disable */\nimport * as Types from './types';\nimport * as APIs from './apis';\nexport { Types };\nexport const Smart = APIs;\nexport default { Types,\n ...APIs\n};`;
+			fs.writeFileSync(indexPath, indexContent, "utf-8");
 
 			vscode.window.showInformationMessage(`接口文件已生成到 ${docDir}`);
 			return { ok: true };
@@ -329,7 +328,7 @@ export class ApiGenerationService {
 		if (!schema) return 'void';
 		if (schema.$ref) {
 			const name = this.refName(schema.$ref) || '';
-			const listInner = this.extractListInner(name);
+			const listInner = this.extractListInnerForTypes(name);
 			// Result<...>
 			if (/^Result/.test(name)) {
 				if (listInner) return `Result<${listInner}[]>`;
@@ -337,15 +336,25 @@ export class ApiGenerationService {
 				const data = def?.properties?.data;
 				if (data?.$ref) {
 					const innerName = this.refName(data.$ref) || '';
-					const listFromInner = this.extractInnerFromListName(innerName);
-					if (listFromInner) return `Result<${listFromInner}[]>`;
+					// 只有当内部类型确实是包装类型时才进行特殊处理
 					// PageResultDTO<Inner> or PageResult<Inner>
-					const prDtoInner = this.extractGenericInner(innerName, 'PageResultDTO');
-					if (prDtoInner) return `Result<PageResult<${prDtoInner}[]>>`;
-					const prInner = this.extractGenericInner(innerName, 'PageResult');
-					if (prInner) return `Result<PageResult<${prInner}>>`;
-					const basePageInner = this.extractGenericInner(innerName, 'BasePageRespDTO');
-					if (basePageInner) return `Result<BasePageRespDTO<${basePageInner}>>`;
+					const prDtoInner = this.extractGenericInnerForTypes(innerName, 'PageResultDTO');
+					if (prDtoInner) {
+						return `Result<PageResult<${prDtoInner}[]>>`;
+					}
+					const prInner = this.extractGenericInnerForTypes(innerName, 'PageResult');
+					if (prInner) {
+						return `Result<PageResult<${prInner}>>`;
+					}
+					// 添加对 Page<T> 类型的处理
+					const pageInner = this.extractGenericInnerForTypes(innerName, 'Page');
+					if (pageInner) {
+						return `Result<Page<${pageInner}>>`;
+					}
+					const basePageInner = this.extractGenericInnerForTypes(innerName, 'BasePageRespDTO');
+					if (basePageInner) {
+						return `Result<BasePageRespDTO<${basePageInner}>>`;
+					}
 					// Fallback to $ref type
 					const t = this.tsTypeFromSchemaForTypes({ $ref: data.$ref });
 					return `Result<${t}>`;
@@ -363,8 +372,10 @@ export class ApiGenerationService {
 			}
 			// PageResultDTO<Inner>
 			if (/^PageResultDTO/.test(name)) {
-				const inner = this.extractGenericInner(name, 'PageResultDTO');
-				if (inner) return `PageResult<${inner}[]>`;
+				const inner = this.extractGenericInnerForTypes(name, 'PageResultDTO');
+				if (inner) {
+					return `PageResult<${inner}[]>`;
+				}
 				const def = spec.definitions?.[name];
 				const coll = def?.properties?.records || def?.properties?.list || def?.properties?.rows || def?.properties?.data;
 				if (coll?.items?.$ref) {
@@ -375,14 +386,18 @@ export class ApiGenerationService {
 			}
 			// PageResult<Inner>
 			if (/^PageResult/.test(name)) {
-				const inner = this.extractGenericInner(name, 'PageResult');
-				if (inner) return `PageResult<${inner}>`;
+				const inner = this.extractGenericInnerForTypes(name, 'PageResult');
+				if (inner) {
+					return `PageResult<${inner}>`;
+				}
 				return `PageResult<any>`;
 			}
 			// BasePageRespDTO<Inner>
 			if (/^BasePageRespDTO/.test(name)) {
-				const inner = this.extractGenericInner(name, 'BasePageRespDTO');
-				if (inner) return `BasePageRespDTO<${inner}>`;
+				const inner = this.extractGenericInnerForTypes(name, 'BasePageRespDTO');
+				if (inner) {
+					return `BasePageRespDTO<${inner}>`;
+				}
 				return `BasePageRespDTO<any>`;
 			}
 			// ReplyEntity<...>
@@ -391,6 +406,26 @@ export class ApiGenerationService {
 				const def = spec.definitions?.[name];
 				const data = def?.properties?.data;
 				if (data?.$ref) {
+					const innerName = this.refName(data.$ref) || '';
+					// 只有当内部类型确实是包装类型时才进行特殊处理
+					const prDtoInner = this.extractGenericInnerForTypes(innerName, 'PageResultDTO');
+					if (prDtoInner) {
+						return `ReplyEntity<PageResult<${prDtoInner}[]>>`;
+					}
+					const prInner = this.extractGenericInnerForTypes(innerName, 'PageResult');
+					if (prInner) {
+						return `ReplyEntity<PageResult<${prInner}>>`;
+					}
+					// 添加对 Page<T> 类型的处理
+					const pageInner = this.extractGenericInnerForTypes(innerName, 'Page');
+					if (pageInner) {
+						return `ReplyEntity<Page<${pageInner}>>`;
+					}
+					const basePageInner = this.extractGenericInnerForTypes(innerName, 'BasePageRespDTO');
+					if (basePageInner) {
+						return `ReplyEntity<BasePageRespDTO<${basePageInner}>>`;
+					}
+					// 对于其他类型（包括以List开头但不是List包装的类型），直接使用
 					const t = this.tsTypeFromSchemaForTypes({ $ref: data.$ref });
 					return `ReplyEntity<${t}>`;
 				}
@@ -408,7 +443,7 @@ export class ApiGenerationService {
 			// Page.*RespDTO 模式处理
 			const pageRespMatch = name.match(/^Page(.+)RespDTO$/);
 			if (pageRespMatch) {
-				const innerType = pageRespMatch[1];
+				const innerType = this.normalizeInnerTypeForTypes(pageRespMatch[1]);
 				return `PageResult<${innerType}[]>`;
 			}
 			// Fallback to direct type reference
@@ -442,11 +477,17 @@ export class ApiGenerationService {
 		if (sch.$ref) {
 			const name = this.refName(sch.$ref);
 			if (!name) return 'any';
-			return name; // 在 types.ts 内部，直接使用类型名，不加 Types. 前缀
+			const cleanName = this.cleanGenericSymbols(name);
+			return cleanName; // 在 types.ts 内部，直接使用类型名，不加 Types. 前缀
 		}
 		if (sch.type === 'array') {
 			const itemTs = this.tsTypeFromSchemaForTypes(sch.items || { type: 'any' }, expandRef);
 			return `${itemTs}[]`;
+		}
+		// 处理枚举类型
+		if (sch.enum && Array.isArray(sch.enum)) {
+			const enumValues = sch.enum.map((value: any) => `"${value}"`).join(' | ');
+			return enumValues;
 		}
 		if (sch.type) {
 			return this.mapPrimitiveType(sch.type, sch.format);
@@ -471,15 +512,29 @@ export class ApiGenerationService {
 				const data = def?.properties?.data;
 				if (data?.$ref) {
 					const innerName = this.refName(data.$ref) || '';
-					const listFromInner = this.extractInnerFromListName(innerName);
-					if (listFromInner) return `Types.Result<${listFromInner}[]>`;
+					// 只有当内部类型确实是包装类型时才进行特殊处理
 					// PageResultDTO<Inner> or PageResult<Inner>
 					const prDtoInner = this.extractGenericInner(innerName, 'PageResultDTO');
-					if (prDtoInner) return `Types.Result<Types.PageResult<${prDtoInner}[]>>`;
+					if (prDtoInner) {
+						const cleanInner = this.cleanGenericSymbols(prDtoInner);
+						return `Types.Result<Types.PageResult<${cleanInner}[]>>`;
+					}
 					const prInner = this.extractGenericInner(innerName, 'PageResult');
-					if (prInner) return `Types.Result<Types.PageResult<${prInner}>>`;
+					if (prInner) {
+						const cleanInner = this.cleanGenericSymbols(prInner);
+						return `Types.Result<Types.PageResult<${cleanInner}>>`;
+					}
+					// 添加对 Page<T> 类型的处理
+					const pageInner = this.extractGenericInner(innerName, 'Page');
+					if (pageInner) {
+						const cleanInner = this.cleanGenericSymbols(pageInner);
+						return `Types.Result<Types.Page<${cleanInner}>>`;
+					}
 					const basePageInner = this.extractGenericInner(innerName, 'BasePageRespDTO');
-					if (basePageInner) return `Types.Result<Types.BasePageRespDTO<${basePageInner}>>`;
+					if (basePageInner) {
+						const cleanInner = this.cleanGenericSymbols(basePageInner);
+						return `Types.Result<Types.BasePageRespDTO<${cleanInner}>>`;
+					}
 					// Fallback to $ref type
 					const t = this.tsTypeFromSchema({ $ref: data.$ref });
 					return `Types.Result<${t}>`;
@@ -503,7 +558,9 @@ export class ApiGenerationService {
 				const coll = def?.properties?.records || def?.properties?.list || def?.properties?.rows || def?.properties?.data;
 				const items = coll?.items;
 				const itemTs = this.tsTypeFromSchema(items || { type: 'object' });
-				return `Types.PageResult<${itemTs}>`;
+				// 确保数组类型格式正确
+				const arrayType = itemTs.endsWith('[]') ? itemTs : `${itemTs}[]`;
+				return `Types.PageResult<${arrayType}>`;
 			}
 			// PageResult<T>
 			if (/^PageResult/.test(name)) {
@@ -513,7 +570,9 @@ export class ApiGenerationService {
 				const coll = def?.properties?.records || def?.properties?.list || def?.properties?.rows || def?.properties?.data;
 				const items = coll?.items;
 				const itemTs = this.tsTypeFromSchema(items || { type: 'object' });
-				return `Types.PageResult<${itemTs}>`;
+				// 确保数组类型格式正确
+				const arrayType = itemTs.endsWith('[]') ? itemTs : `${itemTs}[]`;
+				return `Types.PageResult<${arrayType}>`;
 			}
 			// Page.*RespDTO 模式
 			if (/^Page.*RespDTO$/.test(name)) {
@@ -521,7 +580,9 @@ export class ApiGenerationService {
 				const coll = def?.properties?.records || def?.properties?.list || def?.properties?.rows || def?.properties?.data;
 				const items = coll?.items;
 				const itemTs = this.tsTypeFromSchema(items || { type: 'object' });
-				return `Types.PageResult<${itemTs}>`;
+				// 确保数组类型格式正确
+				const arrayType = itemTs.endsWith('[]') ? itemTs : `${itemTs}[]`;
+				return `Types.PageResult<${arrayType}>`;
 			}
 
 			// BasePageRespDTO<T>
@@ -532,8 +593,7 @@ export class ApiGenerationService {
 				const data = def?.properties?.data;
 				if (data?.$ref) {
 					const innerName = this.refName(data.$ref) || '';
-					const listFromInner = this.extractInnerFromListName(innerName);
-					if (listFromInner) return `Types.BasePageRespDTO<${listFromInner}>`;
+					// 对于其他类型（包括以List开头但不是List包装的类型），直接使用
 					const t = this.tsTypeFromSchema({ $ref: data.$ref });
 					return `Types.BasePageRespDTO<${t}>`;
 				}
@@ -556,12 +616,17 @@ export class ApiGenerationService {
 				const data = def?.properties?.data;
 				if (data?.$ref) {
 					const innerName = this.refName(data.$ref) || '';
-					const listFromInner = this.extractInnerFromListName(innerName);
-					if (listFromInner) return `Types.ReplyEntity<${listFromInner}[]>`;
+					// 只有当内部类型确实是包装类型时才进行特殊处理
 					const prDtoInner = this.extractGenericInner(innerName, 'PageResultDTO');
 					if (prDtoInner) return `Types.ReplyEntity<Types.PageResult<${prDtoInner}[]>>`;
 					const prInner = this.extractGenericInner(innerName, 'PageResult');
 					if (prInner) return `Types.ReplyEntity<Types.PageResult<${prInner}>>`;
+					// 添加对 Page<T> 类型的处理
+					const pageInner = this.extractGenericInner(innerName, 'Page');
+					if (pageInner) {
+						const cleanInner = this.cleanGenericSymbols(pageInner);
+						return `Types.ReplyEntity<Types.Page<${cleanInner}>>`;
+					}
 					const basePageInner = this.extractGenericInner(innerName, 'BasePageRespDTO');
 					if (basePageInner) return `Types.ReplyEntity<Types.BasePageRespDTO<${basePageInner}>>`;
 					const t = this.tsTypeFromSchema({ $ref: data.$ref });
@@ -600,12 +665,37 @@ export class ApiGenerationService {
 		return null;
 	}
 
+	private static extractListInnerForTypes(defName: string): string | null {
+		// Generic forms: ReplyEntity«List<Foo»» / Result<List<Foo>> / PageResultDTO<List<Foo>> / PageResult<List<Foo>>
+		let m = defName.match(/(?:Result|ReplyEntity|PageResult|PageResultDTO)[«<]List<([^»>]+)[»>]+/);
+		if (m) return this.normalizeInnerTypeForTypes(m[1]);
+		// Compact forms: ReplyEntityListFooDTO / ResultListBar
+		m = defName.match(/^(?:Result|ReplyEntity)List([A-Za-z0-9_]+)$/);
+		if (m) return this.normalizeInnerTypeForTypes(m[1]);
+		return null;
+	}
+
 	private static extractInnerFromListName(name: string): string | null {
 		// List<FooDTO> or ListFooDTO
 		let m = name.match(/^List[«<]([^»>]+)[»>]+$/);
 		if (m) return this.normalizeInnerType(m[1]);
 		m = name.match(/^List([A-Za-z0-9_]+)$/);
 		if (m) return this.normalizeInnerType(m[1]);
+		// 处理 ListXXXRespDTO, ListXXXReqDTO 等模式
+		m = name.match(/^List(.+(?:Resp|Req|DTO|VO))$/);
+		if (m) return this.normalizeInnerType(m[1]);
+		return null;
+	}
+
+	private static extractInnerFromListNameForTypes(name: string): string | null {
+		// List<FooDTO> or ListFooDTO
+		let m = name.match(/^List[«<]([^»>]+)[»>]+$/);
+		if (m) return this.normalizeInnerTypeForTypes(m[1]);
+		m = name.match(/^List([A-Za-z0-9_]+)$/);
+		if (m) return this.normalizeInnerTypeForTypes(m[1]);
+		// 处理 ListXXXRespDTO, ListXXXReqDTO 等模式
+		m = name.match(/^List(.+(?:Resp|Req|DTO|VO))$/);
+		if (m) return this.normalizeInnerTypeForTypes(m[1]);
 		return null;
 	}
 
@@ -617,11 +707,35 @@ export class ApiGenerationService {
 		return this.normalizeInnerType(m[1]);
 	}
 
+	private static extractGenericInnerForTypes(defName: string, wrapper: string): string | null {
+		// Support Wrapper«Inner» or Wrapper<Inner>
+		const re = new RegExp(`${wrapper}[«<]([^»>]+)[»>]+`);
+		const m = defName.match(re);
+		if (!m) return null;
+		return this.normalizeInnerTypeForTypes(m[1]);
+	}
+
 	private static normalizeInnerType(token: string): string {
 		if (!token) return 'any';
 		if (/^(string|number|integer|boolean)$/i.test(token)) return token.toLowerCase();
 		if (/^(boolean)$/i.test(token)) return 'boolean';
-		return `Types.${token}`;
+		// 清理泛型符号
+		const cleanToken = this.cleanGenericSymbols(token);
+		return `Types.${cleanToken}`;
+	}
+
+	private static normalizeInnerTypeForTypes(token: string): string {
+		if (!token) return 'any';
+		if (/^(string|number|integer|boolean)$/i.test(token)) return token.toLowerCase();
+		if (/^(boolean)$/i.test(token)) return 'boolean';
+		// 清理泛型符号，但不添加 Types. 前缀
+		return this.cleanGenericSymbols(token);
+	}
+
+	private static cleanGenericSymbols(typeName: string): string {
+		if (!typeName) return typeName;
+		// 将 Swagger 的 «» 符号转换为 TypeScript 的 <> 符号
+		return typeName.replace(/«/g, '<').replace(/»/g, '>');
 	}
 
 	private static tsTypeFromSchema(sch: any, expandRef = false): string {
@@ -629,11 +743,17 @@ export class ApiGenerationService {
 		if (sch.$ref) {
 			const name = this.refName(sch.$ref);
 			if (!name) return 'any';
-			return expandRef ? name : `Types.${name}`;
+			const cleanName = this.cleanGenericSymbols(name);
+			return expandRef ? cleanName : `Types.${cleanName}`;
 		}
 		if (sch.type === 'array') {
 			const itemTs = this.tsTypeFromSchema(sch.items || { type: 'any' }, expandRef);
 			return `${itemTs}[]`;
+		}
+		// 处理枚举类型
+		if (sch.enum && Array.isArray(sch.enum)) {
+			const enumValues = sch.enum.map((value: any) => `"${value}"`).join(' | ');
+			return enumValues;
 		}
 		if (sch.type) {
 			return this.mapPrimitiveType(sch.type, sch.format);
@@ -648,22 +768,21 @@ export class ApiGenerationService {
 		if (type === 'boolean') return 'boolean';
 		if (type === 'string') return 'string';
 		if (type === 'array') return 'any[]';
-		if (type === 'object') return '{ [key: string]: any }';
+		if (type === 'object') return 'PlainObject';
 		return 'any';
 	}
 
 	private static renderTypes(spec: any, selectedApis?: { [controller: string]: any[] }): string {
 		const lines: string[] = [];
 		lines.push(`/* eslint-disable */`);
-		lines.push(`// @ts-nocheck`);
-		lines.push(`// This file is auto-generated by va-swagger-to-api plugin`);
 		lines.push('');
 		lines.push(`import type { AxiosRequestConfig } from 'axios';`);
 		lines.push('');
 
 		// 通用泛型
 		lines.push(`export interface Result<T> { code?: string; data?: T; message?: string; success?: boolean; }`);
-		lines.push(`export interface PageResult<T> { total?: number; pageNo?: number; pageNum?: number; pageSize?: number; list?: T[]; records?: T[]; rows?: T[]; data?: T[]; }`);
+		lines.push(`export interface PageResult<T> { pageNumber?: number; pageSize?: number; pageStart?: number; records?: T[]; totalCount?: number; }`);
+		lines.push(`export interface Page<T> { current?: number; pages?: number; records?: T[]; size?: number; total?: number; }`);
 		lines.push(`export interface BasePageRespDTO<T> { data?: T[]; totalCount?: number; }`);
 		lines.push(`export interface ReplyEntity<T> { code?: string; data?: T; message?: string; success?: boolean; }`);
 		lines.push(`export type BaseRequestDTO = { [key: string]: any }`);
@@ -724,17 +843,18 @@ export class ApiGenerationService {
 
 		for (const [name, def] of Object.entries<any>(spec.definitions || {})) {
 			// 跳过包装定义：不输出到 types.ts，但保留在内存用于响应类型解析
-			if (/^(Result|PageResult|BasePageRespDTO|ReplyEntity|Page.*RespDTO|.*PageRespDTO)/.test(name)) continue;
+			if (/^(Result|PageResult|Page|BasePageRespDTO|ReplyEntity|Page.*RespDTO|.*PageRespDTO)/.test(name)) continue;
 
 			// 如果提供了selectedApis，只生成被使用的类型
 			if (selectedApis && !usedTypes.has(name)) continue;
 
 			const required = new Set<string>(def.required || []);
 			const ifaceDesc = def.description || '';
+			const cleanName = this.cleanGenericSymbols(name);
 
 			if (def.type === 'object' || def.properties || def.allOf) {
 				if (ifaceDesc) lines.push(`/** ${ifaceDesc} */`);
-				lines.push(`export interface ${name} {`);
+				lines.push(`export interface ${cleanName} {`);
 
 				if (def.allOf) {
 					// 简化 allOf: 合并 properties
@@ -760,10 +880,10 @@ export class ApiGenerationService {
 				lines.push(`}`);
 			} else if (def.type === 'array') {
 				const itemTs = this.tsTypeFromSchema(def.items || { type: 'any' });
-				lines.push(`export type ${name} = ${itemTs}[];`);
+				lines.push(`export type ${cleanName} = ${itemTs}[];`);
 			} else {
 				const baseType = this.mapPrimitiveType(def.type, def.format);
-				lines.push(`export type ${name} = ${baseType};`);
+				lines.push(`export type ${cleanName} = ${baseType};`);
 			}
 			lines.push('');
 		}
@@ -816,14 +936,22 @@ export class ApiGenerationService {
 
 				sortedApis.forEach((api: any) => {
 					const methodName = ApiGenerationService.toMethodName(api, existingMethodNames);
-					const isGet = String(api.method).toLowerCase() === 'get';
 					const respType = ApiGenerationService.resolveResponseTypeForTypes(spec, api);
 
-					if (isGet) {
-						// 从 Swagger 规范中获取参数信息
-						const params = api.parameters || [];
-						const queryParams = params.filter((p: any) => p.in === 'query');
-						const pathParams = params.filter((p: any) => p.in === 'path');
+					// 检查是否有参数（query 或 path 参数）
+					const params = api.parameters || [];
+					const queryParams = params.filter((p: any) => p.in === 'query');
+					const pathParams = params.filter((p: any) => p.in === 'path');
+					const bodyParam = params.find((p: any) => p.in === 'body');
+					const hasUrlParams = queryParams.length > 0 || pathParams.length > 0;
+
+					// 使用接口的 summary 作为注释
+					if (api.summary) {
+						lines.push(`  /** ${api.summary} */`);
+					}
+
+					if (hasUrlParams) {
+						// 有 URL 参数的方法（GET、DELETE 等）
 						const allParams = [...pathParams, ...queryParams]; // path 参数在前，query 参数在后
 
 						// 生成内联参数列表
@@ -838,18 +966,14 @@ export class ApiGenerationService {
 
 						const argList = paramList.join(', ');
 						const axiosParam = argList ? ', axiosConfig?: AxiosRequestConfig' : 'axiosConfig?: AxiosRequestConfig';
-						// 使用接口的 summary 作为注释
-						if (api.summary) {
-							lines.push(`  /** ${api.summary} */`);
-						}
 						lines.push(`  ${methodName}(${argList}${axiosParam}): Promise<${respType}>;`);
-					} else {
+					} else if (bodyParam) {
+						// 有 body 参数的方法（POST、PUT 等）
 						const reqType = ApiGenerationService.resolveRequestTypeForTypes(spec, api);
-						// 使用接口的 summary 作为注释
-						if (api.summary) {
-							lines.push(`  /** ${api.summary} */`);
-						}
 						lines.push(`  ${methodName}(req: ${reqType}, axiosConfig?: AxiosRequestConfig): Promise<${respType}>;`);
+					} else {
+						// 没有参数的方法
+						lines.push(`  ${methodName}(axiosConfig?: AxiosRequestConfig): Promise<${respType}>;`);
 					}
 				});
 
@@ -865,8 +989,6 @@ export class ApiGenerationService {
 	private static renderApis(selectedApis: { [controller: string]: any[] }, spec: any): string {
 		const lines: string[] = [];
 		lines.push(`/* eslint-disable */`);
-		lines.push(`// @ts-nocheck`);
-		lines.push(`// This file is auto-generated by va-swagger-to-api plugin`);
 		lines.push(``);
 		lines.push(`import type { AxiosRequestConfig } from 'axios';`);
 		lines.push(`import $http from '../request';`);
@@ -903,17 +1025,19 @@ export class ApiGenerationService {
 
 			sortedApis.forEach((api: any) => {
 				const methodName = ApiGenerationService.toMethodName(api, existingMethodNames);
-				const isGet = String(api.method).toLowerCase() === 'get';
-				const respType = ApiGenerationService.resolveResponseType(spec, api);
 				const method = String(api.method).toLowerCase();
-
+				const respType = ApiGenerationService.resolveResponseType(spec, api);
 				const pathExpr = '${basePath}' + String(api.path);
 
-				if (isGet) {
-					// 从 Swagger 规范中获取参数信息
-					const params = api.parameters || [];
-					const queryParams = params.filter((p: any) => p.in === 'query');
-					const pathParams = params.filter((p: any) => p.in === 'path');
+				// 检查是否有参数（query 或 path 参数）
+				const params = api.parameters || [];
+				const queryParams = params.filter((p: any) => p.in === 'query');
+				const pathParams = params.filter((p: any) => p.in === 'path');
+				const bodyParam = params.find((p: any) => p.in === 'body');
+				const hasUrlParams = queryParams.length > 0 || pathParams.length > 0;
+
+				if (hasUrlParams) {
+					// 有 URL 参数的方法（GET、DELETE 等）
 					const allParams = [...pathParams, ...queryParams]; // path 参数在前，query 参数在后
 
 					// 生成内联参数列表
@@ -937,12 +1061,21 @@ export class ApiGenerationService {
 					lines.push(`    const ret = await $http.run<Types.BaseRequestDTO, ${respType}>(path, '${method}', payload, axiosConfig);`);
 					lines.push(`    return ret;`);
 					lines.push(`  },`);
-				} else {
+				} else if (bodyParam) {
+					// 有 body 参数的方法（POST、PUT 等）
 					const reqType = ApiGenerationService.resolveRequestType(spec, api);
 					lines.push(`  async ${methodName}(req: ${reqType}, axiosConfig?: AxiosRequestConfig): Promise<${respType}> {`);
 					lines.push(`    const path = \`${pathExpr}\`;`);
 					lines.push(`    const payload: ${reqType} = req;`);
 					lines.push(`    const ret = await $http.run<${reqType}, ${respType}>(path, '${method}', payload, axiosConfig);`);
+					lines.push(`    return ret;`);
+					lines.push(`  },`);
+				} else {
+					// 没有参数的方法
+					lines.push(`  async ${methodName}(axiosConfig?: AxiosRequestConfig): Promise<${respType}> {`);
+					lines.push(`    const path = \`${pathExpr}\`;`);
+					lines.push(`    const payload: Types.BaseRequestDTO = {};`);
+					lines.push(`    const ret = await $http.run<Types.BaseRequestDTO, ${respType}>(path, '${method}', payload, axiosConfig);`);
 					lines.push(`    return ret;`);
 					lines.push(`  },`);
 				}

@@ -169,16 +169,17 @@ export default {
 ```typescript
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
-import * as Smart from '@/services/smart'
+import { Smart, Types } from '@/services/smart'
 @Component({
   name: 'MessageCenter'
 })
 export default class MessageCenter extends Vue {
   private async created() {
-    console.log(Smart, 'Smart')
+    console.log(Smart, Types, 'Smart')
 
-    // 测试类型定义是否可用
-    const testData: Smart.Result<string> = {
+    console.log(Types)
+
+    const testData: Types.Result<string> = {
       code: '200',
       message: 'success',
       success: true,
@@ -186,9 +187,15 @@ export default class MessageCenter extends Vue {
     }
     console.log(testData)
 
-    const payload = {。。。}
+    const testData2: Types.AddOrUpdateSupervisoryRuleReqVO = {
+      ruleName: 'test',
+    }
 
-    const { data } = await Smart.SmartTimetableController.addTeacherAndRelationCourse(payload)
+    console.log(testData2)
+
+    const payload = { }
+
+    const { data } = await Smart.SmartTimetableController.addTeacherAndRelationCourse_285ea0(payload)
 
     console.log(data)
   }

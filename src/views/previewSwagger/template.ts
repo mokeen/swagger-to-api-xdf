@@ -298,7 +298,7 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 			}
 
 			#controller-toolbar .input-group {
-				width: 100%;
+				flex: 1;
 			}
 
 			#controller-toolbar .input-group .form-control {
@@ -309,6 +309,15 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 				outline: none;
 				box-shadow: none;
 			}
+
+			#controller-toolbar .btn-group {
+				width: 200px;
+			}
+
+			#selected-count {
+				height: 28px;
+				line-height: 20px;
+			}
 		</style>
 	</head>
 
@@ -318,7 +327,7 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 			<div class="doc-card card" id="basic-info-card">
 				<div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
 					<h5 class="mb-0">文档信息</h5>
-					<div class="right-operate-btn">
+					<div class="right-operate-btn d-flex align-items-center gap-2">
 						<button id="refresh-btn" class="btn btn-sm btn-light">
 							<svg t="1754470396208" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="6944" width="18" height="18"><path d="M887.456 443.744l102.4 136.512h-76.064c-32.48 192.544-200 339.2-401.792 339.2a407.104 407.104 0 0 1-342.56-186.752 32 32 0 0 1 53.76-34.688A343.104 343.104 0 0 0 512 855.456c166.304 0 305.024-118.208 336.672-275.2h-63.616l102.4-136.512zM512 104.544c145.664 0 278.016 77.12 350.848 200.16a32 32 0 0 1-55.04 32.608A343.232 343.232 0 0 0 512 168.544c-178.176 0-324.64 135.648-341.76 309.312h68.704l-102.4 136.544-102.4-136.544H105.92C123.296 268.8 298.464 104.544 512 104.544z" fill="#515151" p-id="6945"></path></svg>
 							刷新文档
@@ -327,6 +336,7 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 							<svg t="1754470912280" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="8706" width="18" height="18"><path d="M909.5 671.4h-625c-17.7 0-32-14.3-32-32s14.3-32 32-32h625c17.7 0 32 14.3 32 32s-14.3 32-32 32z" p-id="8707" fill="#515151"></path><path d="M904.8 662.7c-8.2 0-16.4-3.1-22.6-9.4l-225-225c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l225 225c12.5 12.5 12.5 32.8 0 45.3-6.3 6.3-14.5 9.4-22.7 9.4z" p-id="8708" fill="#515151"></path><path d="M679.5 905.2c-8.2 0-16.4-3.1-22.6-9.4-12.5-12.5-12.5-32.8 0-45.3l225-225c12.5-12.5 32.8-12.5 45.3 0s12.5 32.8 0 45.3l-225 225c-6.3 6.3-14.5 9.4-22.7 9.4z" p-id="8709" fill="#515151"></path><path d="M448.2 958.3H229.7c-89.3 0-162-72.7-162-162V228.2c0-89.3 72.7-162 162-162h568.1c89.3 0 162 72.7 162 162v208.1c0 17.7-14.3 32-32 32s-32-14.3-32-32V228.2c0-54-44-98-98-98H229.7c-54 0-98 44-98 98v568.1c0 54 44 98 98 98h218.5c17.7 0 32 14.3 32 32s-14.3 32-32 32z" p-id="8710" fill="#515151"></path></svg>
 							导出接口
 						</button>
+						<span id="selected-count" class="badge bg-secondary text-white">已选 0 个</span>
 					</div>
 				</div>
 				<div class="card-body">
@@ -340,6 +350,10 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 					<div class="input-group input-group-sm">
 						<input type="text" class="form-control controller-search-input" placeholder="筛选 Controller（名称或描述）..." />
 						<button class="btn btn-outline-secondary controller-search-clear" type="button" title="清除">&times;</button>
+					</div>
+					<div class="btn-group btn-group-sm" role="group">
+						<button type="button" class="btn btn-outline-primary global-select-all-btn" title="全部选中">全选</button>
+						<button type="button" class="btn btn-outline-secondary global-deselect-all-btn" title="取消全选">取消</button>
 					</div>
 				</div>
 			</div>
@@ -395,6 +409,28 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 			let swaggerJsonData = null;
 			let selectedApis = {};
 			let existingApiData = {};
+
+			// 更新已选接口数量显示
+			function updateSelectedCount() {
+				const selectedCountElement = document.getElementById('selected-count');
+				if (!selectedCountElement) return;
+
+				let totalCount = 0;
+				Object.values(selectedApis).forEach(apis => {
+					if (Array.isArray(apis)) {
+						totalCount += apis.length;
+					}
+				});
+
+				selectedCountElement.textContent = '已选 ' + totalCount + ' 个';
+
+				// 根据数量调整样式
+				if (totalCount > 0) {
+					selectedCountElement.className = 'badge bg-success text-white';
+				} else {
+					selectedCountElement.className = 'badge bg-secondary text-white';
+				}
+			}
 
 			// 将目标吸顶到容器顶部（仅当需要滚动时），可滚动容器为 interface-card
 			function scrollToTopInContainer(container, target, margin = 6) {
@@ -513,6 +549,7 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 				interfaceContainer.innerHTML = '';
 				selectedApis = {};
 				existingApiData = {};
+				updateSelectedCount();
 
 				try {
 					basicContent = JSON.parse(\`{{basicInfo}}\`);
@@ -936,6 +973,8 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 								}
 							}
 						}
+						// 更新已选接口数量显示
+						updateSelectedCount();
 					});
 				});
 
@@ -1205,6 +1244,8 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 								listItem.classList.remove('selected-api');
 							}
 						});
+						// 更新已选接口数量显示
+						updateSelectedCount();
 						// 重新请求已存在的API列表
 						vscode.postMessage({
 							command: 'getExistingApis'
@@ -1279,7 +1320,185 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 				});
 			}
 
+			// 全局全选和取消全选功能
+			function setupGlobalSelectButtons() {
+				const globalSelectAllBtn = document.querySelector('.global-select-all-btn');
+				const globalDeselectAllBtn = document.querySelector('.global-deselect-all-btn');
+
+				// 用于管理定时器的变量
+				let activeTimers = [];
+				let isProcessing = false;
+
+				// 清理所有活跃的定时器
+				function clearActiveTimers() {
+					activeTimers.forEach(timer => clearTimeout(timer));
+					activeTimers = [];
+				}
+
+				// 添加定时器到管理列表
+				function addTimer(timer) {
+					activeTimers.push(timer);
+				}
+
+				if (globalSelectAllBtn) {
+					globalSelectAllBtn.addEventListener('click', () => {
+						// 防止重复点击
+						if (isProcessing) return;
+
+						isProcessing = true;
+						clearActiveTimers(); // 清理之前的定时器
+
+						const originalText = globalSelectAllBtn.textContent;
+						globalSelectAllBtn.disabled = true;
+						globalSelectAllBtn.textContent = '处理中...';
+
+						// 使用 Promise 链式调用，避免多层嵌套定时器
+						expandAllControllers()
+							.then(() => selectAllVisibleApis())
+							.then(() => collapseAllExceptLast())
+							.finally(() => {
+								globalSelectAllBtn.disabled = false;
+								globalSelectAllBtn.textContent = originalText;
+								isProcessing = false;
+							});
+					});
+				}
+
+				// 展开所有 Controller
+				function expandAllControllers() {
+					return new Promise((resolve) => {
+						const unopenedButtons = document.querySelectorAll('.accordion-button[aria-expanded="false"]');
+						if (unopenedButtons.length === 0) {
+							resolve();
+							return;
+						}
+
+						let expandedCount = 0;
+						unopenedButtons.forEach(button => {
+							// 监听展开完成事件
+							const targetId = button.getAttribute('data-bs-target');
+							const targetElement = document.querySelector(targetId);
+
+							if (targetElement) {
+								const handleShown = () => {
+									expandedCount++;
+									targetElement.removeEventListener('shown.bs.collapse', handleShown);
+									if (expandedCount === unopenedButtons.length) {
+										resolve();
+									}
+								};
+								targetElement.addEventListener('shown.bs.collapse', handleShown);
+							}
+
+							button.click();
+						});
+
+						// 备用超时机制
+						const fallbackTimer = setTimeout(() => {
+							resolve();
+						}, 3000);
+						addTimer(fallbackTimer);
+					});
+				}
+
+				// 选择所有可见的 API
+				function selectAllVisibleApis() {
+					return new Promise((resolve) => {
+						const allCheckboxes = document.querySelectorAll('.accordion-body .list-group-item:not([style*="display: none"]) .form-check-input');
+						allCheckboxes.forEach(checkbox => {
+							if (!checkbox.checked) {
+								checkbox.checked = true;
+								checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+							}
+						});
+						resolve();
+					});
+				}
+
+				// 折叠所有 Controller 除了最后一个
+				function collapseAllExceptLast() {
+					return new Promise((resolve) => {
+						const allButtons = Array.from(document.querySelectorAll('.accordion-button'));
+						const allCollapses = Array.from(document.querySelectorAll('.accordion-collapse'));
+
+						// 边界情况：没有按钮时直接返回
+						if (allButtons.length === 0) {
+							resolve();
+							return;
+						}
+
+						// 找到最后一个按钮对应的内容区域
+						const lastButton = allButtons[allButtons.length - 1];
+						const lastTargetId = lastButton ? lastButton.getAttribute('data-bs-target') : null;
+
+						// 验证最后一个按钮的目标ID有效性
+						const lastCollapse = lastTargetId ? document.querySelector(lastTargetId) : null;
+
+						// 强制设置所有Controller为折叠状态
+						allButtons.forEach((button) => {
+							button.setAttribute('aria-expanded', 'false');
+							button.classList.add('collapsed');
+						});
+
+						// 强制隐藏所有内容区域（只移除show类，保留collapse基础类）
+						allCollapses.forEach((collapse) => {
+							collapse.classList.remove('show');
+						});
+
+						// 只展开最后一个Controller（如果存在且有效）
+						if (lastButton && lastCollapse) {
+							// 设置按钮状态
+							lastButton.setAttribute('aria-expanded', 'true');
+							lastButton.classList.remove('collapsed');
+
+							// 设置内容区域状态（只添加show类）
+							lastCollapse.classList.add('show');
+
+							// 触发标记已存在API的逻辑
+							const accordionBody = lastCollapse.querySelector('.accordion-body[data-tag]');
+							if (accordionBody && typeof markApiItemsInController === 'function' && existingApiData) {
+								const tagName = accordionBody.getAttribute('data-tag');
+								if (tagName) {
+									// 延迟执行标记，确保DOM更新完成
+									const markingTimer = setTimeout(() => {
+										const normalizeControllerName = (name) => {
+											const clean = (name || '').replace(/Controller$/i, '').replace(/[^a-zA-Z0-9_]/g, ' ').split(' ').filter(Boolean).map(s => s[0].toUpperCase() + s.slice(1)).join('');
+											return clean + 'Controller';
+										};
+										const normalizedTagName = normalizeControllerName(tagName);
+										Object.entries(existingApiData).forEach(([controllerName, apis]) => {
+											if (normalizedTagName === controllerName) {
+												markApiItemsInController(accordionBody, apis);
+											}
+										});
+									}, 100);
+									addTimer(markingTimer);
+								}
+							}
+						}
+
+						// 短暂延迟后完成，确保DOM更新
+						const completionTimer = setTimeout(() => {
+							resolve();
+						}, 150);
+						addTimer(completionTimer);
+					});
+				}
+
+				if (globalDeselectAllBtn) {
+					globalDeselectAllBtn.addEventListener('click', () => {
+						// 获取所有已选中的接口复选框
+						const checkedCheckboxes = document.querySelectorAll('.accordion-body .form-check-input:checked');
+						checkedCheckboxes.forEach(checkbox => {
+							checkbox.checked = false;
+							checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+						});
+					});
+				}
+			}
+
 			initSwaggerPreview();
+			setupGlobalSelectButtons();
 		</script>
 	</body>
 </html>`;
