@@ -69,34 +69,165 @@ export const addSwaggerTemplate = `<!DOCTYPE html>
 	<script>
 		const vscode = acquireVsCodeApi();
 
-		// 表单提交处理
-		document.getElementById("swaggerForm").addEventListener(
-			"submit",
-			(event) => {
-				event.preventDefault();
-				event.stopPropagation();
+		// 应用状态管理
+		const appState = {
+			isSubmitting: false,
+			isTesting: false,
+			lastTestedUrl: null,
+			testResult: null
+		};
 
-				const form = event.currentTarget;
-				if (form.checkValidity()) {
-					vscode.postMessage({
-						command: "addSwagger",
-						url: document.getElementById("swaggerUrl").value,
-						name: document.getElementById("swaggerName").value,
-						desc: document.getElementById("swaggerDesc").value || "",
-					});
-				}
+		// DOM元素缓存
+		const elements = {};
 
+		// 初始化
+		document.addEventListener('DOMContentLoaded', function() {
+			initializeElements();
+			bindEvents();
+			setupFormValidation();
+		});
+
+		function initializeElements() {
+			elements.form = document.getElementById("swaggerForm");
+			elements.urlInput = document.getElementById("swaggerUrl");
+			elements.nameInput = document.getElementById("swaggerName");
+			elements.descInput = document.getElementById("swaggerDesc");
+			elements.testBtn = document.getElementById("testUrlBtn");
+			elements.submitBtn = elements.form.querySelector('button[type="submit"]');
+		}
+
+		function bindEvents() {
+			// 表单提交处理
+			elements.form.addEventListener("submit", handleFormSubmit, false);
+
+			// 测试按钮处理
+			elements.testBtn.addEventListener("click", handleTestUrl);
+
+			// URL输入变化时重置测试状态
+			elements.urlInput.addEventListener("input", handleUrlChange);
+
+			// 实时验证
+			elements.urlInput.addEventListener("blur", validateUrl);
+			elements.nameInput.addEventListener("blur", validateName);
+		}
+
+		function handleFormSubmit(event) {
+			event.preventDefault();
+			event.stopPropagation();
+
+			if (appState.isSubmitting) return;
+
+			const form = event.currentTarget;
+
+			// 表单验证
+			if (!form.checkValidity()) {
 				form.classList.add("was-validated");
-			},
-			false
-		);
+				return;
+			}
+
+			// 提交数据
+			submitForm();
+		}
+
+		function setupFormValidation() {
+			// 自定义验证消息
+			elements.urlInput.addEventListener('invalid', function() {
+				if (this.validity.valueMissing) {
+					this.setCustomValidity('请输入Swagger URL');
+				} else if (this.validity.typeMismatch) {
+					this.setCustomValidity('请输入有效的URL格式');
+				} else {
+					this.setCustomValidity('');
+				}
+			});
+
+			elements.nameInput.addEventListener('invalid', function() {
+				if (this.validity.valueMissing) {
+					this.setCustomValidity('请输入文档名称');
+				} else {
+					this.setCustomValidity('');
+				}
+			});
+		}
+
+		function submitForm() {
+			appState.isSubmitting = true;
+			updateSubmitButton(true);
+
+			const formData = {
+				command: "addSwagger",
+				url: elements.urlInput.value.trim(),
+				name: elements.nameInput.value.trim(),
+				desc: elements.descInput.value.trim() || ""
+			};
+
+			vscode.postMessage(formData);
+		}
+
+		function handleTestUrl() {
+			if (appState.isTesting) return;
+
+			const url = elements.urlInput.value.trim();
+
+			// 基础验证
+			if (!url) {
+				showFieldError(elements.urlInput, '请输入Swagger URL');
+				return;
+			}
+
+			if (!isValidSwaggerUrl(url)) {
+				showFieldError(elements.urlInput, 'URL格式不正确，请输入有效的Swagger文档URL');
+				return;
+			}
+
+			// 开始测试
+			appState.isTesting = true;
+			appState.lastTestedUrl = url;
+			updateTestButton('testing');
+
+			vscode.postMessage({
+				command: 'testSwaggerUrl',
+				url: url
+			});
+		}
+
+		function handleUrlChange() {
+			// URL改变时重置测试状态
+			const currentUrl = elements.urlInput.value.trim();
+			if (currentUrl !== appState.lastTestedUrl) {
+				appState.testResult = null;
+				updateTestButton('default');
+			}
+
+			// 清除自定义验证消息
+			elements.urlInput.setCustomValidity('');
+		}
+
+		function validateUrl() {
+			const url = elements.urlInput.value.trim();
+			if (url && !isValidSwaggerUrl(url)) {
+				showFieldError(elements.urlInput, 'URL格式不正确，应包含swagger或.json路径');
+				return false;
+			}
+			clearFieldError(elements.urlInput);
+			return true;
+		}
+
+		function validateName() {
+			const name = elements.nameInput.value.trim();
+			if (!name) {
+				showFieldError(elements.nameInput, '请输入文档名称');
+				return false;
+			}
+			clearFieldError(elements.nameInput);
+			return true;
+		}
 
 		function isValidSwaggerUrl(url) {
-			// 基础格式校验
 			try {
 				const urlObj = new URL(url);
 				const validProtocol = ['http:', 'https:'].includes(urlObj.protocol);
-				const validPath = /(\/swagger.*|\.json)$/i.test(urlObj.pathname);
+				const validPath = /(\\/swagger.*|\\.json)$/i.test(urlObj.pathname);
 
 				return validProtocol &&
 					urlObj.hostname.includes('.') &&
@@ -107,71 +238,132 @@ export const addSwaggerTemplate = `<!DOCTYPE html>
 			}
 		}
 
-		function testSwaggerUrl() {
-			const url = document.getElementById('swaggerUrl').value.trim();
-			const testBtn = document.getElementById('testUrlBtn');
+		// UI更新函数
+		function updateTestButton(state) {
+			const icon = '<i class="bi bi-link-45deg"></i>';
 
-			// 校验URL格式
-			if (!url) {
-				vscode.postMessage({
-					command: 'showAlert',
-					text: '请输入Swagger URL！'
-				});
-				return;
+			switch (state) {
+				case 'testing':
+					elements.testBtn.disabled = true;
+					elements.testBtn.className = 'btn btn-outline-secondary flex-grow-1';
+					elements.testBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>测试中...';
+					break;
+				case 'success':
+					elements.testBtn.disabled = false;
+					elements.testBtn.className = 'btn btn-outline-success flex-grow-1';
+					elements.testBtn.innerHTML = \`<i class="bi bi-check-circle me-1"></i>测试通过\`;
+					break;
+				case 'failed':
+					elements.testBtn.disabled = false;
+					elements.testBtn.className = 'btn btn-outline-danger flex-grow-1';
+					elements.testBtn.innerHTML = \`<i class="bi bi-x-circle me-1"></i>测试失败\`;
+					break;
+				case 'default':
+				default:
+					elements.testBtn.disabled = false;
+					elements.testBtn.className = 'btn btn-outline-primary flex-grow-1';
+					elements.testBtn.innerHTML = \`\${icon} 测试链接\`;
+					break;
 			}
-
-			if (!isValidSwaggerUrl(url)) {
-				testBtn.className = 'btn btn-outline-danger flex-grow-1';
-				testBtn.innerHTML = '<i class="bi bi-exclamation-circle"></i> URL格式错误';
-				setTimeout(() => {
-					testBtn.className = 'btn btn-outline-primary flex-grow-1';
-					testBtn.innerHTML = '<i class="bi bi-link-45deg"></i> 测试链接';
-				}, 2000);
-				return;
-			}
-
-			// 重置状态
-			testBtn.disabled = true;
-			// 重置状态
-			testBtn.className = 'btn btn-outline-secondary flex-grow-1';
-			testBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 测试中...';
-
-			vscode.postMessage({
-				command: 'testSwaggerUrl',
-				url: url
-			});
 		}
 
-		// 接收测试结果
-		window.addEventListener('message', event => {
-			const testBtn = document.getElementById('testUrlBtn');
-			testBtn.disabled = false;
+		function updateSubmitButton(loading) {
+			if (loading) {
+				elements.submitBtn.disabled = true;
+				elements.submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>添加中...';
+			} else {
+				elements.submitBtn.disabled = false;
+				elements.submitBtn.innerHTML = '添加文档';
+			}
+		}
 
-			if (event.data.command === 'testUrlResult') {
-				const icon = '<i class="bi bi-link-45deg"></i>';
-				if (event.data.available) {
-					testBtn.className = 'btn btn-outline-success flex-grow-1';
-					testBtn.innerHTML = \`\${icon} 测试通过\`;
-				} else {
-					testBtn.className = 'btn btn-outline-danger flex-grow-1';
-					testBtn.innerHTML = \`\${icon} 测试失败\`;
-				}
+		function showFieldError(field, message) {
+			field.setCustomValidity(message);
+			field.classList.add('is-invalid');
+
+			// 显示错误消息
+			let feedback = field.parentNode.querySelector('.invalid-feedback');
+			if (!feedback) {
+				feedback = document.createElement('div');
+				feedback.className = 'invalid-feedback';
+				field.parentNode.appendChild(feedback);
+			}
+			feedback.textContent = message;
+		}
+
+		function clearFieldError(field) {
+			field.setCustomValidity('');
+			field.classList.remove('is-invalid');
+
+			const feedback = field.parentNode.querySelector('.invalid-feedback');
+			if (feedback) {
+				feedback.remove();
+			}
+		}
+
+		// 消息处理
+		window.addEventListener('message', event => {
+			const { command, data } = event.data;
+
+			switch (command) {
+				case 'testUrlResult':
+					handleTestResult(event.data);
+					break;
+				case 'addSwaggerResult':
+					handleAddResult(event.data);
+					break;
+			}
+		});
+
+		function handleTestResult(result) {
+			appState.isTesting = false;
+			appState.testResult = result;
+
+			if (result.available) {
+				updateTestButton('success');
+				clearFieldError(elements.urlInput);
 
 				// 3秒后恢复默认状态
-				const timer = setTimeout(() => {
-					clearTimeout(timer);
-					testBtn.className = 'btn btn-outline-primary flex-grow-1';
-					testBtn.innerHTML = \`\${icon} 测试链接\`;
+				setTimeout(() => {
+					if (appState.testResult === result) {
+						updateTestButton('default');
+					}
 				}, 3000);
 
 				vscode.postMessage({
 					command: 'showAlert',
-					text: event.data.available
-						? '✅ Swagger文档可正常访问'
-						: '❌ 无法访问此Swagger URL'
+					text: '✅ Swagger文档可正常访问',
+					type: 'info'
+				});
+			} else {
+				updateTestButton('failed');
+				showFieldError(elements.urlInput, result.error || '无法访问此URL');
+
+				// 3秒后恢复默认状态
+				setTimeout(() => {
+					if (appState.testResult === result) {
+						updateTestButton('default');
+					}
+				}, 3000);
+
+				vscode.postMessage({
+					command: 'showAlert',
+					text: '❌ 无法访问此Swagger URL',
+					type: 'warning'
 				});
 			}
-		});
+		}
+
+		function handleAddResult(result) {
+			appState.isSubmitting = false;
+			updateSubmitButton(false);
+
+			if (result.error) {
+				// 显示错误，但不关闭面板，让用户可以修改后重试
+				console.error('Add swagger failed:', result.error);
+			}
+			// 成功的情况由后端处理（关闭面板）
+		}
 	</script>
 </body>
 
