@@ -33,6 +33,58 @@ interface ApiDefinition {
 }
 
 export class ApiGenerationService {
+	// ============================================================================
+	// 常量定义
+	// ============================================================================
+
+	/** Swagger $ref 前缀 */
+	private static readonly SWAGGER_REF_PREFIX = '#/definitions/';
+
+	/** 排序语言代码 */
+	private static readonly LOCALE = 'zh-CN';
+
+	/** Controller 后缀 */
+	private static readonly CONTROLLER_SUFFIX = 'Controller';
+
+	/** HTTP 方法后缀正则 */
+	private static readonly HTTP_METHOD_SUFFIX_REGEX = /Using(POST|GET|PUT|DELETE|PATCH|HEAD|OPTIONS)(_\d+)?$/i;
+
+	/** 成功的 HTTP 状态码 */
+	private static readonly HTTP_SUCCESS_CODES = ['200', '201', 'default'];
+
+	/** 基本 TypeScript 类型集合 */
+	private static readonly BASIC_TS_TYPES = new Set(['number', 'string', 'boolean', 'void', 'any', 'any[]']);
+
+	// ============================================================================
+	// 工具方法
+	// ============================================================================
+
+	/**
+	 * 从 $ref 中提取类型名称
+	 * 例如：#/definitions/UserDTO -> UserDTO
+	 */
+	private static extractTypeNameFromRef(ref: string): string {
+		if (!ref) return '';
+		return ref.replace(this.SWAGGER_REF_PREFIX, '');
+	}
+
+	/**
+	 * 获取成功的响应对象
+	 */
+	private static getSuccessResponse(responses: any): any {
+		if (!responses) return null;
+		for (const code of this.HTTP_SUCCESS_CODES) {
+			if (responses[code]) {
+				return responses[code];
+			}
+		}
+		return null;
+	}
+
+	// ============================================================================
+	// 主要方法
+	// ============================================================================
+
 	/**
 	 * 从现有的 apis.ts 文件中提取完整的API数据结构
 	 */
@@ -97,21 +149,15 @@ export class ApiGenerationService {
 	public static mergeApiData(existingApiData: { [controller: string]: any[] }, selectedApis: { [controller: string]: any[] }): { [controller: string]: any[] } {
 		const mergedData: { [controller: string]: any[] } = {};
 
-		// 创建控制器名称标准化函数
-		const normalizeControllerName = (name: string) => {
-			const clean = (name || '').replace(/Controller$/i, '').replace(/[^a-zA-Z0-9_]/g, ' ').split(/\s+/).filter(Boolean).map(s => s[0].toUpperCase() + s.slice(1)).join('');
-			return `${clean}Controller`;
-		};
-
 		// 首先添加所有已存在的API数据
 		for (const [controller, apis] of Object.entries(existingApiData)) {
-			const normalizedName = normalizeControllerName(controller);
+			const normalizedName = this.normalizeControllerName(controller);
 			mergedData[normalizedName] = [...apis];
 		}
 
 		// 然后处理新选择的API，覆盖或添加
 		for (const [controller, newApis] of Object.entries(selectedApis)) {
-			const normalizedName = normalizeControllerName(controller);
+			const normalizedName = this.normalizeControllerName(controller);
 			if (!mergedData[normalizedName]) {
 				mergedData[normalizedName] = [];
 			}
@@ -123,7 +169,7 @@ export class ApiGenerationService {
 				if (cleanedApi.operationId) {
 					// 移除 UsingPOST_数字 这样的后缀
 					cleanedApi.operationId = cleanedApi.operationId
-						.replace(/Using(POST|GET|PUT|DELETE|PATCH|HEAD|OPTIONS)(_\d+)?$/i, '') || cleanedApi.operationId;
+						.replace(this.HTTP_METHOD_SUFFIX_REGEX, '') || cleanedApi.operationId;
 				}
 
 				// 查找是否在同一controller中已存在相同的API（基于path和method）
@@ -145,23 +191,84 @@ export class ApiGenerationService {
 	}
 
 	/**
+	 * 标准化 Controller 名称（用于 mergedApiData 的 key）
+	 * 例如：assistant-agenda-controller -> AssistantagendacontrollerController
+	 */
+	private static normalizeControllerName(name: string): string {
+		const clean = (name || '')
+			.replace(new RegExp(this.CONTROLLER_SUFFIX + '$', 'i'), '')
+			.replace(/[^a-zA-Z0-9_]/g, ' ')
+			.split(/\s+/)
+			.filter(Boolean)
+			.map(s => s[0].toUpperCase() + s.slice(1))
+			.join('');
+		return `${clean}${this.CONTROLLER_SUFFIX}`;
+	}
+
+	/**
+	 * 将字符串转换为小驼峰格式（用于 API 文件中的常量名）
+	 * 例如：BiDockingController -> biDockingController
+	 *      assistant-agenda-controller -> assistantAgendaController
+	 *      class-controller -> classController
+	 */
+	private static toCamelCase(str: string): string {
+		// 按分隔符或大写字母拆分
+		const words = str
+			.replace(/([A-Z])/g, ' $1') // 在大写字母前加空格
+			.replace(/[-_\s]+/g, ' ') // 统一分隔符为空格
+			.trim()
+			.split(/\s+/)
+			.filter(Boolean);
+
+		if (words.length === 0) return 'controller';
+
+		// 第一个单词小写，其余首字母大写
+		return words[0].toLowerCase() +
+			words.slice(1).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
+	}
+
+	/**
 	 * 对合并后的API数据进行排序
 	 */
 	private static sortMergedApiData(apiData: { [controller: string]: any[] }): { [controller: string]: any[] } {
 		const sortedData: { [controller: string]: any[] } = {};
-		const sortedControllerNames = Object.keys(apiData).sort((a, b) => a.localeCompare(b, "zh-CN"));
+		const sortedControllerNames = Object.keys(apiData).sort((a, b) => a.localeCompare(b, this.LOCALE));
 
 		for (const controllerName of sortedControllerNames) {
 			const apis = apiData[controllerName];
-			const sortedApis = apis.sort((a, b) => {
-				const aId = a.operationId || a.summary || (a.path ? a.path.split('/').pop() : '');
-				const bId = b.operationId || b.summary || (b.path ? b.path.split('/').pop() : '');
-				return aId.localeCompare(bId, "zh-CN");
-			});
-			sortedData[controllerName] = sortedApis;
+			sortedData[controllerName] = this.sortApis(apis);
 		}
 
 		return sortedData;
+	}
+
+	/**
+	 * 对 API 列表进行排序（按 operationId/summary/path）
+	 */
+	private static sortApis(apis: any[]): any[] {
+		return [...apis].sort((a, b) => {
+				const aId = a.operationId || a.summary || (a.path ? a.path.split('/').pop() : '');
+				const bId = b.operationId || b.summary || (b.path ? b.path.split('/').pop() : '');
+			return aId.localeCompare(bId, this.LOCALE);
+		});
+	}
+
+	/**
+	 * 从 API 定义中分类参数
+	 */
+	private static classifyParameters(parameters: any[]): {
+		bodyParam: any | undefined;
+		bodyParams: any[];
+		queryParams: any[];
+		pathParams: any[];
+	} {
+		const bodyParamsArr = parameters.filter((p: any) => p.in === 'body');
+		return {
+			bodyParam: bodyParamsArr.length === 1 ? bodyParamsArr[0] : undefined,
+			bodyParams: bodyParamsArr,
+			queryParams: parameters.filter((p: any) => p.in === 'query'),
+			pathParams: parameters.filter((p: any) => p.in === 'path')
+		};
 	}
 
 	/**
@@ -194,12 +301,12 @@ export class ApiGenerationService {
 			Object.values(mergedApiData || {}).forEach(list => {
 				(list || []).forEach((api: any) => {
 				if (api && api.path && api.method) {
-					picked.add(`${api.path}::${String(api.method).toLowerCase()}`);
-				}
+						picked.add(`${api.path}::${String(api.method).toLowerCase()}`);
+					}
 				});
 			});
 
-		const filteredPaths: Record<string, any> = {};
+			const filteredPaths: Record<string, any> = {};
 		if (swaggerJson && swaggerJson.paths) {
 				for (const [p, methods] of Object.entries<any>(swaggerJson.paths)) {
 					const keptMethods: Record<string, any> = {};
@@ -304,10 +411,11 @@ export class ApiGenerationService {
 		lines.push('/* eslint-disable */');
 		lines.push('');
 	lines.push('import { AxiosRequestConfig } from \'axios\';');
-	lines.push('');
-	lines.push('export type PlainObject = { [key: string]: any };');
+		lines.push('');
+		lines.push('export type PlainObject = { [key: string]: any };');
 	lines.push('export type Map<T0 extends string | number | symbol, T1> = Record<T0, T1>;');
-	lines.push('');
+	lines.push('export type BaseRequestDTO = { [key: string]: any };');
+		lines.push('');
 
 		if (!spec.definitions) {
 			return lines.join('\n');
@@ -332,7 +440,7 @@ export class ApiGenerationService {
 	lines.push('');
 	lines.push(...this.generateControllerTypes(apiPool, mergedApiData, spec, typesPool));
 
-	return lines.join('\n');
+		return lines.join('\n');
 	}
 
 	/**
@@ -556,14 +664,14 @@ export class ApiGenerationService {
 
 		// 引用类型
 		if (propDef.$ref) {
-			const typeName = propDef.$ref.replace('#/definitions/', '');
+			const typeName = this.extractTypeNameFromRef(propDef.$ref);
 			return this.convertSwaggerTypeToTS(typeName);
 		}
 
 		// 数组类型
 		if (propDef.type === 'array' && propDef.items) {
 			if (propDef.items.$ref) {
-				const itemType = propDef.items.$ref.replace('#/definitions/', '');
+				const itemType = this.extractTypeNameFromRef(propDef.items.$ref);
 				const tsType = this.convertSwaggerTypeToTS(itemType);
 				return `${tsType}[]`;
 			}
@@ -760,9 +868,19 @@ export class ApiGenerationService {
 				const inputTypes = new Set<string>();
 				if (operation.parameters && Array.isArray(operation.parameters)) {
 					operation.parameters.forEach((param: any) => {
-						if (param.schema && param.schema.$ref) {
-							const types = this.extractTypesFromRef(param.schema.$ref);
-							types.forEach(t => inputTypes.add(t));
+						if (param.schema) {
+							// 处理 $ref 引用
+							if (param.schema.$ref) {
+								const types = this.extractTypesFromRef(param.schema.$ref);
+								types.forEach(t => inputTypes.add(t));
+							}
+							// 处理数组类型（如 type: 'array', items: { $ref: '...' }）
+							else if (param.schema.type === 'array' && param.schema.items) {
+								if (param.schema.items.$ref) {
+									const types = this.extractTypesFromRef(param.schema.items.$ref);
+									types.forEach(t => inputTypes.add(t));
+								}
+							}
 						}
 					});
 				}
@@ -771,11 +889,11 @@ export class ApiGenerationService {
 				const outputTypes = new Set<string>();
 				let responseSchema = '';
 				if (operation.responses) {
-					// 主要关注 200 状态码的响应
-					const successResponse = operation.responses['200'] || operation.responses['201'];
+					// 获取成功的响应
+					const successResponse = this.getSuccessResponse(operation.responses);
 					if (successResponse && successResponse.schema) {
 						if (successResponse.schema.$ref) {
-							responseSchema = successResponse.schema.$ref.replace('#/definitions/', '');
+							responseSchema = this.extractTypeNameFromRef(successResponse.schema.$ref);
 							const types = this.extractTypesFromRef(successResponse.schema.$ref);
 							types.forEach(t => outputTypes.add(t));
 						}
@@ -817,7 +935,7 @@ export class ApiGenerationService {
 		const types: string[] = [];
 
 		// 去掉 #/definitions/ 前缀
-		const typeName = ref.replace('#/definitions/', '');
+		const typeName = this.extractTypeNameFromRef(ref);
 
 		if (!typeName) {
 			return types;
@@ -967,11 +1085,7 @@ export class ApiGenerationService {
 		lines.push(`export interface ${pascalCaseName} {`);
 
 			// 按 operationId 排序
-			const sortedApis = [...apis].sort((a, b) => {
-				const aId = a.operationId || a.summary || a.path;
-				const bId = b.operationId || b.summary || b.path;
-				return aId.localeCompare(bId, 'zh-CN');
-			});
+			const sortedApis = this.sortApis(apis);
 
 			for (const api of sortedApis) {
 				const apiKey = `${api.path}::${api.method.toLowerCase()}`;
@@ -1022,29 +1136,74 @@ private static generateControllerMethod(methodName: string, apiDef: ApiDefinitio
 	 */
 	private static generateMethodParameters(apiDef: ApiDefinition): string {
 		const params: string[] = [];
+		const { bodyParam, bodyParams, queryParams, pathParams } = this.classifyParameters(apiDef.parameters || []);
 
-	// 区分不同类型的参数
-	const bodyParam = apiDef.parameters ? apiDef.parameters.find((p: any) => p.in === 'body') : undefined;
-	const queryParams = apiDef.parameters ? apiDef.parameters.filter((p: any) => p.in === 'query') : [];
-	const pathParams = apiDef.parameters ? apiDef.parameters.filter((p: any) => p.in === 'path') : [];
+		// 处理多个 body 参数的情况
+		if (bodyParams.length > 1) {
+			bodyParams.forEach((param: any) => {
+				const paramName = param.name || 'input';
+				const optional = param.required === false ? '?' : '';
+				const tsType = param.schema ?
+					(param.schema.$ref
+						? this.convertSwaggerTypeToTS(this.extractTypeNameFromRef(param.schema.$ref))
+						: param.schema.type === 'array'
+							? `${param.schema.items && param.schema.items.$ref
+								? this.convertSwaggerTypeToTS(this.extractTypeNameFromRef(param.schema.items.$ref))
+								: this.mapSwaggerTypeToTS((param.schema.items && param.schema.items.type) || 'any')}[]`
+							: this.mapSwaggerTypeToTS(param.schema.type || 'any'))
+					: this.mapSwaggerTypeToTS(param.type || 'any');
+				params.push(`${paramName}${optional}: ${tsType}`);
+			});
+		} else if (bodyParam && bodyParam.schema) {
+			// 单个 Body 参数
+			const paramName = bodyParam.name || 'input';
+			const optional = bodyParam.required === false ? '?' : '';
 
-		// Body 参数
-		if (bodyParam && bodyParam.schema) {
 			if (bodyParam.schema.$ref) {
-				const typeName = bodyParam.schema.$ref.replace('#/definitions/', '');
+				const typeName = this.extractTypeNameFromRef(bodyParam.schema.$ref);
 				const tsType = this.convertSwaggerTypeToTS(typeName);
-				const paramName = bodyParam.name || 'input';
-				params.push(`${paramName}: ${tsType}`);
+				params.push(`${paramName}${optional}: ${tsType}`);
+			} else if (bodyParam.schema.type === 'array') {
+				// 处理数组类型的body参数
+				const itemType = bodyParam.schema.items && bodyParam.schema.items.$ref
+					? this.convertSwaggerTypeToTS(this.extractTypeNameFromRef(bodyParam.schema.items.$ref))
+					: this.mapSwaggerTypeToTS((bodyParam.schema.items && bodyParam.schema.items.type) || 'any');
+				params.push(`${paramName}${optional}: ${itemType}[]`);
+			} else {
+				// 其他类型
+				const tsType = this.mapSwaggerTypeToTS(bodyParam.schema.type || 'any');
+				params.push(`${paramName}${optional}: ${tsType}`);
 			}
 		}
 
-		// Query 和 Path 参数
-		[...pathParams, ...queryParams].forEach((param: any) => {
-			const paramName = param.name;
-			const paramType = this.mapSwaggerTypeToTS(param.type || 'any');
-			const required = param.required ? '' : '?';
-			params.push(`${paramName}${required}: ${paramType}`);
-		});
+	// Query 和 Path 参数
+	[...pathParams, ...queryParams].forEach((param: any) => {
+		const paramName = param.name;
+		const required = param.required ? '' : '?';
+
+		let paramType: string;
+		if (param.schema) {
+			// 如果有 schema，使用 schema 推导类型
+			paramType = param.schema.$ref
+				? this.convertSwaggerTypeToTS(this.extractTypeNameFromRef(param.schema.$ref))
+				: param.schema.type === 'array'
+					? `${param.schema.items && param.schema.items.$ref
+						? this.convertSwaggerTypeToTS(this.extractTypeNameFromRef(param.schema.items.$ref))
+						: this.mapSwaggerTypeToTS((param.schema.items && param.schema.items.type) || 'any')}[]`
+					: this.mapSwaggerTypeToTS(param.schema.type || 'any');
+		} else if (param.type === 'array' && param.items) {
+			// 如果是 array 类型，检查 items
+			const itemType = param.items.type ?
+				this.mapSwaggerTypeToTS(param.items.type) :
+				'any';
+			paramType = `${itemType}[]`;
+		} else {
+			// 其他基本类型
+			paramType = this.mapSwaggerTypeToTS(param.type || 'any');
+		}
+
+		params.push(`${paramName}${required}: ${paramType}`);
+	});
 
 		// 添加 axiosConfig 可选参数
 		params.push('axiosConfig?: AxiosRequestConfig');
@@ -1088,7 +1247,292 @@ private static generateControllerMethod(methodName: string, apiDef: ApiDefinitio
 	 * 生成apis.ts内容
 	 */
 	private static renderApis(mergedApiData: any, spec: any): string {
-		// TODO: 实现API生成逻辑
-		return `/* eslint-disable */\n\nexport {};\n`;
+		const lines: string[] = [];
+		lines.push(`/* eslint-disable */`);
+		lines.push(``);
+		lines.push(`import type { AxiosRequestConfig } from 'axios';`);
+		lines.push(`import $http from '../request';`);
+		lines.push(`import * as Types from './types';`);
+		lines.push(``);
+
+		// 设置 basePath
+		const basePath = (spec && spec.basePath && spec.basePath !== '/') ? spec.basePath : '';
+		lines.push(`const basePath = '${basePath}';`);
+		lines.push('');
+
+		// 用于跟踪已使用的方法名，确保唯一性
+		const existingMethodNames = new Set<string>();
+
+		// 按照控制器名称排序 (支持中文)
+		const sortedControllers = Object.keys(mergedApiData).sort((a, b) =>
+			a.localeCompare(b, this.LOCALE)
+		);
+
+		for (const controllerName of sortedControllers) {
+			const apis = mergedApiData[controllerName];
+
+			// 从第一个 API 获取原始 tag 名称
+			const originalTag = apis.length > 0 && apis[0].tags && apis[0].tags.length > 0
+				? apis[0].tags[0]
+				: controllerName;
+
+			// 生成 Controller 常量名（小驼峰，去掉 Controller 后缀）
+			const controllerConst = this.toCamelCase(originalTag);
+
+			// 生成 Controller 类型名（大驼峰，用于 Types.XXX）
+			const controllerType = this.toPascalCase(originalTag);
+
+			lines.push(`export const ${controllerConst}: Types.${controllerType} = {`);
+
+			// 按照 operationId 排序
+			const sortedApis = this.sortApis(apis);
+
+			sortedApis.forEach((api: any) => {
+				const methodName = this.toMethodName(api, existingMethodNames);
+				const method = String(api.method).toLowerCase();
+				const respType = this.resolveResponseType(spec, api);
+				const pathExpr = '${basePath}' + String(api.path);
+
+			// 分类参数
+			const { bodyParam, bodyParams, queryParams, pathParams } = this.classifyParameters(api.parameters || []);
+			const hasUrlParams = queryParams.length > 0 || pathParams.length > 0;
+			const hasMultiBodyParams = bodyParams.length > 1;
+
+			if (hasMultiBodyParams) {
+				// 有多个 body 参数的方法（通常是不规范的 Swagger 定义）
+				// 将所有 body 参数作为方法参数，并组合到 payload 对象中
+				const paramList = bodyParams.map((p: any) => {
+					const optional = p.required === false ? '?' : '';
+					const paramType = p.schema ?
+						this.tsTypeFromSchema(p.schema, true) :
+						this.mapPrimitiveTypeForApis(p.type || 'string', p.format);
+					return `${p.name}${optional}: ${paramType}`;
+				});
+
+				const argList = paramList.join(', ');
+				const payloadObj = `{ ${bodyParams.map((p: any) => p.name).join(', ')} }`;
+
+				lines.push(`  async ${methodName}(${argList}${argList ? ', ' : ''}axiosConfig?: AxiosRequestConfig): Promise<${respType}> {`);
+				lines.push(`    const path = \`${pathExpr}\`;`);
+				lines.push(`    const payload: Types.BaseRequestDTO = ${payloadObj};`);
+				lines.push(`    const ret = await $http.run<Types.BaseRequestDTO, ${respType}>(path, '${method}', payload, axiosConfig);`);
+				lines.push(`    return ret;`);
+				lines.push(`  },`);
+		} else if (hasUrlParams) {
+			// 有 URL 参数的方法（GET、DELETE 等）
+			const allParams = [...pathParams, ...queryParams]; // path 参数在前，query 参数在后
+
+		// 生成内联参数列表
+		const paramList = allParams.map((p: any) => {
+			const optional = (p.in === 'path' || p.required) ? '' : '?'; // path 参数必须，query 参数看 required
+			let paramType: string;
+
+			if (p.schema) {
+				// 如果有 schema，使用 schema 推导类型
+				paramType = this.tsTypeFromSchema(p.schema, true);
+			} else if (p.type === 'array' && p.items) {
+				// 如果是 array 类型，检查 items
+				const itemType = p.items.type ?
+					this.mapPrimitiveTypeForApis(p.items.type, p.items.format) :
+					'any';
+				paramType = `${itemType}[]`;
+			} else {
+				// 其他基本类型
+				paramType = this.mapPrimitiveTypeForApis(p.type || 'string', p.format);
+			}
+
+			return `${p.name}${optional}: ${paramType}`;
+		});
+
+				const argList = paramList.join(', ');
+				const payloadObj = queryParams.length > 0 ?
+					`{ ${queryParams.map((p: any) => p.name).join(', ')} }` :
+					`{}`;
+
+				lines.push(`  async ${methodName}(${argList}${argList ? ', ' : ''}axiosConfig?: AxiosRequestConfig): Promise<${respType}> {`);
+				lines.push(`    const path = \`${pathExpr}\`;`);
+				lines.push(`    const payload: Types.BaseRequestDTO = ${payloadObj};`);
+				lines.push(`    const ret = await $http.run<Types.BaseRequestDTO, ${respType}>(path, '${method}', payload, axiosConfig);`);
+				lines.push(`    return ret;`);
+				lines.push(`  },`);
+			} else if (bodyParam) {
+				// 有 body 参数的方法（POST、PUT 等）
+				const reqType = this.resolveRequestType(spec, api);
+				const paramName = bodyParam.name || 'req';
+				const optional = bodyParam.required === false ? '?' : '';
+				const payloadType = optional ? `${reqType} | undefined` : reqType;
+				lines.push(`  async ${methodName}(${paramName}${optional}: ${reqType}, axiosConfig?: AxiosRequestConfig): Promise<${respType}> {`);
+				lines.push(`    const path = \`${pathExpr}\`;`);
+				lines.push(`    const payload: ${payloadType} = ${paramName};`);
+				lines.push(`    const ret = await $http.run<${reqType}, ${respType}>(path, '${method}', payload, axiosConfig);`);
+				lines.push(`    return ret;`);
+				lines.push(`  },`);
+				} else {
+					// 没有参数的方法
+					lines.push(`  async ${methodName}(axiosConfig?: AxiosRequestConfig): Promise<${respType}> {`);
+					lines.push(`    const path = \`${pathExpr}\`;`);
+					lines.push(`    const payload: Types.BaseRequestDTO = {};`);
+					lines.push(`    const ret = await $http.run<Types.BaseRequestDTO, ${respType}>(path, '${method}', payload, axiosConfig);`);
+					lines.push(`    return ret;`);
+					lines.push(`  },`);
+				}
+			});
+
+			lines.push('};');
+			lines.push('');
+		}
+
+		return lines.join('\n');
+	}
+
+	/**
+	 * 从 schema 生成 TypeScript 类型（用于 apis.ts，带 Types. 前缀）
+	 */
+	private static tsTypeFromSchema(sch: any, expandRef = false): string {
+		if (!sch) return 'any';
+
+		if (sch.$ref) {
+			const match = sch.$ref.match(/#\/definitions\/(.+)$/);
+			const name = match ? match[1] : null;
+			if (!name) return 'any';
+			// convertSwaggerTypeToTSForApis 已经会添加 Types. 前缀
+			const cleanName = this.convertSwaggerTypeToTSForApis(name);
+			return expandRef ? cleanName.replace(/^Types\./, '') : cleanName;
+		}
+
+		if (sch.type === 'array') {
+			const itemTs = this.tsTypeFromSchema(sch.items || { type: 'any' }, expandRef);
+			return `${itemTs}[]`;
+		}
+
+		// 处理枚举类型
+		if (sch.enum && Array.isArray(sch.enum)) {
+			const enumValues = sch.enum.map((value: any) => `"${value}"`).join(' | ');
+			return enumValues;
+		}
+
+		if (sch.type) {
+			return this.mapPrimitiveTypeForApis(sch.type, sch.format);
+		}
+
+		return 'any';
+	}
+
+	/**
+	 * 将 Swagger 类型名转换为 TypeScript 类型（用于 APIs，所有类型都加 Types. 前缀）
+	 * 处理泛型：Result«String» -> Types.Result<string>
+	 *          PageResult«UserDTO» -> Types.PageResult<Types.UserDTO>
+	 */
+	private static convertSwaggerTypeToTSForApis(swaggerType: string): string {
+		// 如果不包含泛型符号，判断是否需要加 Types. 前缀
+		if (!swaggerType.includes('«')) {
+			const mappedType = this.mapSwaggerTypeToTS(swaggerType);
+			// 只有基本的 TypeScript 内置类型不加 Types. 前缀
+			if (this.isBasicTSType(mappedType)) {
+				return mappedType;
+			}
+			// 自定义类型加 Types. 前缀（包括 PlainObject）
+			return `Types.${mappedType}`;
+		}
+
+		// 提取基础类型（泛型包装）
+		const baseType = this.extractTypeKey(swaggerType);
+
+		// 提取泛型参数
+		const matchResult = swaggerType.match(/«(.+)»$/);
+		const genericContent = matchResult ? matchResult[1] : null;
+		if (!genericContent) {
+			return `Types.${baseType}`;
+		}
+
+		// 转换泛型参数（递归处理嵌套泛型）
+		const tsGenericParam = this.convertGenericParamToTSForApis(genericContent);
+
+		// 泛型包装类型加 Types. 前缀
+		return `Types.${baseType}<${tsGenericParam}>`;
+	}
+
+	/**
+	 * 转换泛型参数为 TypeScript 格式（用于 APIs）
+	 */
+	private static convertGenericParamToTSForApis(genericParam: string): string {
+		// 处理 List«XXX» -> XXX[]
+		if (genericParam.startsWith('List«')) {
+			const matchResult = genericParam.match(/List«(.+)»$/);
+			const innerContent = matchResult ? matchResult[1] : null;
+			if (innerContent) {
+				return `${this.convertGenericParamToTSForApis(innerContent)}[]`;
+			}
+		}
+
+		// 处理嵌套泛型（如 BasePageResDTO«UserDTO»）
+		if (genericParam.includes('«')) {
+			return this.convertSwaggerTypeToTSForApis(genericParam);
+		}
+
+		// 基本类型映射
+		const mappedType = this.mapSwaggerTypeToTS(genericParam);
+		// 只有基本的 TypeScript 内置类型不加 Types. 前缀
+		if (this.isBasicTSType(mappedType)) {
+			return mappedType;
+		}
+		// 自定义类型加 Types. 前缀（包括 PlainObject）
+		return `Types.${mappedType}`;
+	}
+
+	/**
+	 * 判断是否是 TypeScript 基本类型（不需要 Types. 前缀）
+	 */
+	private static isBasicTSType(type: string): boolean {
+		return this.BASIC_TS_TYPES.has(type);
+	}
+
+	/**
+	 * 映射基本类型（用于 apis.ts）
+	 */
+	private static mapPrimitiveTypeForApis(type?: string, format?: string): string {
+		if (!type) return 'any';
+		if (type === 'integer' || type === 'number') return 'number';
+		if (type === 'long' || (type === 'integer' && format === 'int64')) return 'number';
+		if (type === 'boolean') return 'boolean';
+		if (type === 'string') return 'string';
+		if (type === 'array') return 'any[]';
+		if (type === 'object') return 'Types.PlainObject';
+		return 'any';
+	}
+
+	/**
+	 * 解析请求类型（入参）
+	 */
+	private static resolveRequestType(spec: any, api: any): string {
+		if (!api || !api.parameters || !Array.isArray(api.parameters)) {
+			return 'any';
+		}
+
+		const bodyParam = api.parameters.find((p: any) => p.in === 'body');
+		if (!bodyParam || !bodyParam.schema) {
+			return 'any';
+		}
+
+		return this.tsTypeFromSchema(bodyParam.schema);
+	}
+
+	/**
+	 * 解析响应类型（出参）
+	 */
+	private static resolveResponseType(spec: any, api: any): string {
+		const op = spec && spec.paths && spec.paths[api.path]
+			? spec.paths[api.path][String(api.method).toLowerCase()]
+			: null;
+
+		if (!op) return 'any';
+
+		const responses = op.responses || {};
+		const ok = this.getSuccessResponse(responses);
+		const schema = ok && ok.schema ? ok.schema : null;
+
+		if (!schema) return 'void';
+
+		return this.tsTypeFromSchema(schema);
 	}
 }
