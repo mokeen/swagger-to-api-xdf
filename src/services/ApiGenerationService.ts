@@ -1524,9 +1524,9 @@ export class ApiGenerationService {
 			// 按照 operationId 排序
 			const sortedApis = this.sortApis(apis);
 
-			sortedApis.forEach((api: any) => {
-				const methodName = this.toMethodName(api, existingMethodNames);
-				const method = String(api.method).toLowerCase();
+		sortedApis.forEach((api: any) => {
+			const methodName = this.toMethodName(api, existingMethodNames);
+			const method = String(api.method).toUpperCase();
 				let respType = this.resolveResponseType(spec, api);
 				// 确保泛型类型有泛型参数
 				respType = this.ensureGenericTypesForApis(respType, genericTypeNames);
