@@ -393,7 +393,7 @@ export class ApiGenerationService {
 
 			// 生成index.ts（导出名称使用 PascalCase 的 docName）
 			const indexPath = path.join(docDir, "index.ts");
-			const indexContent = `/* eslint-disable */\nimport * as Types from './types';\nimport * as APIs from './apis';\nconst ${docName}Module = {\n  Types,\n  Services: APIs\n};\nexport default ${docName}Module;\n`;
+			const indexContent = this.generateIndexContent(docName);
 			fs.writeFileSync(indexPath, indexContent, "utf-8");
 
 			vscode.window.showInformationMessage(`接口文件已生成到 ${docDir}`);
@@ -1848,5 +1848,22 @@ export class ApiGenerationService {
 		if (!schema) return "void";
 
 		return this.tsTypeFromSchema(schema);
+	}
+
+	/**
+	 * 生成index.ts文件内容
+	 */
+	private static generateIndexContent(docName: string): string {
+		const lines: string[] = [];
+		lines.push("/* eslint-disable */");
+		lines.push(``);
+		lines.push(`import * as APIs from './apis';`);
+		lines.push(`import * as Types from './types';`);
+		lines.push(``)
+		lines.push(`export { Types as ${docName}Types };`);
+		lines.push(``)
+		lines.push(`const ${docName}Services = APIs;`);
+		lines.push(`export default ${docName}Services;`);
+		return lines.join("\n");
 	}
 }

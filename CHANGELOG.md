@@ -1,6 +1,131 @@
 # 更新日志
 
-此文件记录了"Va Swagger to API(vue2)"扩展的所有重要更改。
+此文件记录了"Va Swagger to API(vue)"扩展的所有重要更改。
+
+## [2.0.0] - 2025-10-13
+
+### 🎉 重大重构版本
+
+这是一个完全重构的版本，全面优化了 API 生成逻辑，提升了代码质量、可维护性和生成代码的准确性。
+
+### 🔥 核心重构
+
+- **ApiGenerationService 完全重构**：
+  - 消除所有硬编码值，提取为常量配置
+  - 将复杂逻辑拆分为独立的工具方法
+  - 优化类型池和 API 池的构建逻辑
+  - 统一命名规范和转换策略
+
+### ✨ 类型系统重大改进
+
+- **完善泛型类型处理**：
+  - 支持嵌套泛型类型（如 `Result<BasePageRespDTO<UserDTO>>`）
+  - 自动识别泛型包装类型（`ReplyEntity`、`Result`、`PageResult` 等）
+  - 对于无泛型参数的响应类型自动补充 `<void>`（如 `ReplyEntity<void>`）
+  - 正确处理 `Map<K, V>` 类型的泛型参数（不对基础类型添加 `Types.` 前缀）
+
+- **智能类型前缀处理**：
+  - 所有自定义类型自动添加 `Types.` 前缀
+  - 基础 TypeScript 类型（`string`、`number`、`boolean` 等）不添加前缀
+  - `PlainObject` 和 `Map` 等自定义类型正确识别并添加前缀
+  - 泛型参数内的类型递归处理，确保前缀正确
+
+- **类型依赖自动收集**：
+  - 自动识别并生成所有依赖的类型定义
+  - 支持数组类型的依赖提取（如 `CommentDTO[]` 会自动生成 `CommentDTO`）
+  - 完整的类型树构建，避免遗漏类型定义
+
+### 🎯 参数处理优化
+
+- **GET/DELETE 方法参数优化**：
+  - 使用具体的参数名称而非通用的 `req`
+  - 正确处理路径参数和查询参数
+  - 路径参数正确包含在 payload 对象中
+  - 支持数组类型参数的正确类型推导（如 `classUidList?: string[]`）
+
+- **POST/PUT 方法参数优化**：
+  - 非必需参数添加 `| undefined` 类型
+  - 支持多个 body 参数的场景
+  - 参数名称使用 Swagger 定义的实际名称
+
+- **可选参数处理**：
+  - 方法签名中正确使用 `?` 标记可选参数
+  - 类型定义中正确处理可选属性
+
+### 🏗️ Controller 命名标准化
+
+- **统一命名规则**：
+  - Controller 名称统一使用小驼峰格式（camelCase）
+  - 保留 `Controller` 后缀（如 `assistantAgendaController`）
+  - 已存在 API 的识别和合并逻辑统一命名标准
+  - 避免命名不一致导致的 API 标记失效
+
+- **类型定义命名**：
+  - Controller 类型定义使用大驼峰格式（PascalCase）
+  - 示例：`AssistantAgendaController`、`BiDockingController`
+
+### 📦 动态导出生成
+
+- **智能 index.ts 生成**：
+  - 根据 Swagger 的 `description` 或 `title` 动态生成导出名称
+  - 自动转换为大驼峰格式（PascalCase）
+  - 支持多种命名格式输入（中划线、下划线、小驼峰、空格分隔等）
+  - 生成两个导出：
+    - `{DocName}Types`：类型命名空间导出
+    - `{DocName}Services`：完整服务导出（默认导出）
+  - 示例：`study-course` → `StudyCourseTypes` 和 `StudyCourseServices`
+
+### 🔧 代码质量提升
+
+- **消除冗余逻辑**：
+  - 提取通用方法避免重复代码
+  - 统一类型转换和命名规范处理
+  - 优化数据结构和算法
+
+- **增强错误处理**：
+  - 完善边界情况处理
+  - 改进错误提示和日志输出
+  - 增强类型安全检查
+
+- **提高可维护性**：
+  - 添加详细的 JSDoc 注释
+  - 方法职责单一，易于理解和测试
+  - 常量集中管理，便于配置
+
+### 🧪 测试和验证
+
+- **完善测试覆盖**：
+  - 添加类型生成测试
+  - 添加 API 生成测试
+  - 添加参数处理测试
+  - 添加命名转换测试
+  - 全量测试验证（基于 demo.json）
+
+### 📝 Bug 修复
+
+- **修复类型前缀问题**：修复嵌套泛型类型中缺少 `Types.` 前缀的问题
+- **修复参数命名问题**：修复 GET/DELETE 方法参数名称不准确的问题
+- **修复 Controller 命名问题**：修复 Controller 命名不一致导致的合并失败
+- **修复类型缺失问题**：修复某些依赖类型未生成的问题（如 `CommentDTO`）
+- **修复泛型参数问题**：修复 `Map<string, string>` 被错误处理为 `Map<Types.string, string>` 的问题
+- **修复可选参数问题**：修复非必需参数缺少 `undefined` 类型的问题
+
+### 🎨 用户体验改进
+
+- **更清晰的代码输出**：生成的代码结构更清晰，易于阅读和维护
+- **更准确的类型推导**：减少手动类型修正的需求
+- **更智能的命名**：导出名称和文件夹名称与项目语义相关
+
+### ⚠️ 破坏性变更
+
+- **index.ts 导出结构变化**：
+  - 旧版本：`export const Smart = APIs`
+  - 新版本：`export const {DocName}Types = Types` 和 `export const {DocName}Services = { Types, ...APIs }`
+  - 需要更新导入语句以适配新的导出格式
+
+- **Controller 命名格式变化**：
+  - 统一使用小驼峰格式，保留 Controller 后缀
+  - 可能需要更新引用 Controller 的代码
 
 ## [1.0.2] - 2024-12-25
 
@@ -72,7 +197,7 @@
 
 ### 使用场景
 
-- Vue 2 项目的 API 接口生成
+- Vue 项目的 API 接口生成
 - 基于 Swagger 文档的 TypeScript 类型定义
 - 团队协作中的接口规范统一
 - 减少手动编写接口代码的工作量
