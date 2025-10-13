@@ -2,10 +2,7 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 <html>
 	<head>
 		<title>Swagger文档预览</title>
-		<link
-			href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-			rel="stylesheet"
-		/>
+		<link href="{{bootstrapCssUri}}" rel="stylesheet" />
 		<style>
 			body {
 				background-color: var(--vscode-editor-background);
@@ -377,7 +374,7 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 		</div>
 
 
-		<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+		<script src="{{bootstrapJsUri}}"></script>
 
 		<script>
 			const vscode = acquireVsCodeApi();

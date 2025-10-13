@@ -68,6 +68,21 @@ export class ApiGenerationService {
 	// ============================================================================
 
 	/**
+	 * 根据原始名称生成文件夹名称（PascalCase）
+	 * @param rawName 原始名称（来自 Swagger 的 description 或 title）
+	 * @returns PascalCase 格式的文件夹名称
+	 * @example
+	 *   getDocumentFolderName('study-course') -> 'StudyCourse'
+	 *   getDocumentFolderName('Smart System') -> 'SmartSystem'
+	 */
+	public static getDocumentFolderName(rawName: string | undefined): string {
+		if (!rawName) {
+			return 'UnknownService';
+		}
+		return this.toPascalCase(rawName);
+	}
+
+	/**
 	 * 从 $ref 中提取类型名称
 	 * 例如：#/definitions/UserDTO -> UserDTO
 	 */
@@ -321,8 +336,8 @@ export class ApiGenerationService {
 				? (swaggerJson.info.description || swaggerJson.info.title)
 				: undefined;
 
-			// 转换为 PascalCase 用于文件夹名
-			const docName = rawName ? this.toPascalCase(rawName) : 'UnknownService';
+			// 使用统一的方法生成文件夹名（PascalCase）
+			const docName = this.getDocumentFolderName(rawName);
 
 			const config = await ContractService.getConfig(workspacePath);
 			const workDir = path.join(

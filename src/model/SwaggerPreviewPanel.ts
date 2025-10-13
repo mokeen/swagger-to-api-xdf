@@ -43,7 +43,7 @@ export class SwaggerPreviewPanel {
 		const { basicInfo, swaggerJson } = JSON.parse(content);
 		this.docId = basicInfo.uid;
 
-		this._panel.webview.html = getWebviewContent(content, context);
+		this._panel.webview.html = getWebviewContent(content, context, this._panel.webview);
 
 		this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
@@ -54,7 +54,12 @@ export class SwaggerPreviewPanel {
 				case 'getExistingApis':
 					if (workspaceFolders && workspaceFolders.length > 0) {
 						const workspacePath = workspaceFolders[0].uri.fsPath;
-						const docName = swaggerJson.info?.title || basicInfo.name || 'default';
+						// 使用与 generateApiFiles 相同的逻辑生成 docName
+						// 优先使用 description，其次使用 title，确保与生成时的路径一致
+						const rawName = swaggerJson.info
+							? (swaggerJson.info.description || swaggerJson.info.title)
+							: (basicInfo.name || 'default');
+						const docName = ApiGenerationService.getDocumentFolderName(rawName);
 						try {
 							const existingApiData = await ApiGenerationService.getExistingApiData(workspacePath, docName);
 							this._panel.webview.postMessage({

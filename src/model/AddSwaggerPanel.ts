@@ -65,7 +65,7 @@ export class AddSwaggerPanel {
 	}
 
 	private _getWebviewContent(): string {
-		return getWebviewContent(this.context);
+		return getWebviewContent(this.context, this._panel.webview);
 	}
 
 	private async _handleMessage(message: WebviewMessage): Promise<void> {
