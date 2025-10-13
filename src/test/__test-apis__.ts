@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // 读取 demo.json
-const demoJsonPath = path.join(__dirname, '../../src/services/demo.json');
+const demoJsonPath = path.join(__dirname, '../../src/test/demo.json');
 console.log('📁 正在读取 demo.json...');
 
 let swaggerJson: any;
@@ -73,7 +73,7 @@ Object.keys(mergedApiData).forEach((controllerName) => {
 // 生成 Types 文件内容
 console.log('\n📦 生成 Types 文件内容...');
 const typesContent = ApiService.renderTypes(swaggerJson, mergedApiData);
-const typesOutputPath = path.join(__dirname, '../../src/services/demo-types.ts');
+const typesOutputPath = path.join(__dirname, '../../out/test/demo-types.ts');
 fs.writeFileSync(typesOutputPath, typesContent, 'utf-8');
 const typesStats = fs.statSync(typesOutputPath);
 console.log(`✅ Types 文件已生成: ${typesOutputPath}`);
@@ -85,7 +85,7 @@ console.log('\n📦 生成 APIs 文件内容...');
 const apisContent = ApiService.renderApis(mergedApiData, swaggerJson);
 
 // 写入文件
-const outputPath = path.join(__dirname, '../../src/services/demo-apis.ts');
+const outputPath = path.join(__dirname, '../../out/test/demo-apis.ts');
 fs.writeFileSync(outputPath, apisContent, 'utf-8');
 
 const stats = fs.statSync(outputPath);
@@ -124,6 +124,56 @@ console.log(`   - Controller 导出数: ${controllerExports}`);
 console.log(`   - async 方法数: ${asyncMethods}`);
 console.log(`   - Types. 前缀使用次数: ${typesPrefix}`);
 
+// 检查 ReplyEntity<void> 修复
+console.log('\n🔍 检查 ReplyEntity<void> 修复:');
+console.log('─'.repeat(80));
+
+// 查找所有返回 ReplyEntity 的方法
+const replyEntityRegex = /Promise<Types\.ReplyEntity([^>]*)>/g;
+let match;
+let totalReplyEntity = 0;
+let replyEntityWithVoid = 0;
+let replyEntityWithoutGeneric = 0;
+
+while ((match = replyEntityRegex.exec(apisContent)) !== null) {
+	totalReplyEntity++;
+	const genericPart = match[1];
+
+	if (genericPart === '') {
+		// 没有泛型参数
+		replyEntityWithoutGeneric++;
+	} else if (genericPart === '<void>') {
+		// 有 <void> 泛型参数
+		replyEntityWithVoid++;
+	}
+}
+
+console.log(`   总 ReplyEntity 返回类型: ${totalReplyEntity}`);
+console.log(`   - 带 <void>: ${replyEntityWithVoid}`);
+console.log(`   - 带其他泛型参数: ${totalReplyEntity - replyEntityWithVoid - replyEntityWithoutGeneric}`);
+console.log(`   - 不带泛型参数（错误）: ${replyEntityWithoutGeneric}`);
+
+if (replyEntityWithoutGeneric > 0) {
+	console.log(`\n   ❌ 发现 ${replyEntityWithoutGeneric} 个 ReplyEntity 缺少泛型参数！`);
+
+	// 显示具体的问题方法
+	const problemRegex = /async (\w+)\([^)]+\): Promise<Types\.ReplyEntity>/g;
+	let problemMatch;
+	let count = 0;
+	console.log('\n   问题方法示例:');
+	while ((problemMatch = problemRegex.exec(apisContent)) !== null && count < 5) {
+		console.log(`      - ${problemMatch[1]}(): Promise<Types.ReplyEntity>`);
+		count++;
+	}
+	if (replyEntityWithoutGeneric > count) {
+		console.log(`      ... 等 ${replyEntityWithoutGeneric} 个方法`);
+	}
+} else {
+	console.log(`\n   ✅ 所有 ReplyEntity 都正确添加了泛型参数！`);
+}
+
+console.log('─'.repeat(80));
+
 // 显示前几行内容
 console.log('\n📄 文件开头内容预览:');
 console.log('─'.repeat(80));
@@ -134,4 +184,12 @@ lines.slice(0, 30).forEach((line: string, i: number) => {
 console.log('─'.repeat(80));
 
 console.log('\n🎉 测试完成！');
+
+// 如果有错误，退出码为 1
+if (replyEntityWithoutGeneric > 0) {
+	console.log('\n❌ 测试失败: 存在缺少泛型参数的 ReplyEntity');
+	process.exit(1);
+} else {
+	console.log('\n✅ 测试通过: ReplyEntity<void> 修复验证成功');
+}
 

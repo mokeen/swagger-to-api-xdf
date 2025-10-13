@@ -410,11 +410,11 @@ export class ApiGenerationService {
 		const lines: string[] = [];
 		lines.push('/* eslint-disable */');
 		lines.push('');
-	lines.push('import { AxiosRequestConfig } from \'axios\';');
+		lines.push('import { AxiosRequestConfig } from \'axios\';');
 		lines.push('');
 		lines.push('export type PlainObject = { [key: string]: any };');
-	lines.push('export type Map<T0 extends string | number | symbol, T1> = Record<T0, T1>;');
-	lines.push('export type BaseRequestDTO = { [key: string]: any };');
+		lines.push('export type Map<T0 extends string | number | symbol, T1> = Record<T0, T1>;');
+		lines.push('export type BaseRequestDTO = { [key: string]: any };');
 		lines.push('');
 
 		if (!spec.definitions) {
@@ -729,6 +729,13 @@ export class ApiGenerationService {
 		// 处理嵌套泛型
 		if (genericParam.includes('«')) {
 			return this.convertSwaggerTypeToTS(genericParam);
+		}
+
+		// 处理多个泛型参数（用逗号分隔，如 Map«string,string»）
+		if (genericParam.includes(',')) {
+			const parts = this.splitGenericParams(genericParam);
+			const convertedParts = parts.map(part => this.mapSwaggerTypeToTS(part.trim()));
+			return convertedParts.join(', ');
 		}
 
 		// 基本类型映射
@@ -1244,6 +1251,26 @@ private static generateControllerMethod(methodName: string, apiDef: ApiDefinitio
 	}
 
 	/**
+	 * 确保泛型包装类型有泛型参数（用于 apis.ts，类型名带 Types. 前缀）
+	 * 如果没有，则添加 <void>
+	 */
+	private static ensureGenericTypesForApis(typeName: string, genericTypeNames: Set<string>): string {
+		// 如果类型名没有 < 符号，说明没有泛型参数
+		if (!typeName.includes('<')) {
+			// 检查是否以 Types. 开头
+			if (typeName.startsWith('Types.')) {
+				const bareTypeName = typeName.substring(6); // 去掉 'Types.' 前缀
+				// 检查是否是泛型包装类型
+				if (genericTypeNames.has(bareTypeName)) {
+					return `Types.${bareTypeName}<void>`;
+				}
+			}
+		}
+
+		return typeName;
+	}
+
+	/**
 	 * 生成apis.ts内容
 	 */
 	private static renderApis(mergedApiData: any, spec: any): string {
@@ -1259,6 +1286,18 @@ private static generateControllerMethod(methodName: string, apiDef: ApiDefinitio
 		const basePath = (spec && spec.basePath && spec.basePath !== '/') ? spec.basePath : '';
 		lines.push(`const basePath = '${basePath}';`);
 		lines.push('');
+
+		// 构建泛型类型名称集合（用于确保泛型类型有泛型参数）
+		const genericTypeNames = new Set<string>();
+		if (spec && spec.definitions) {
+			const typesPool = this.buildTypesPool(spec.definitions);
+			typesPool.forEach((typeDef: any, name: string) => {
+				if (typeDef.isGeneric) {
+					// 使用 Map 的 key 作为类型名，而不是 typeDef.name
+					genericTypeNames.add(name);
+				}
+			});
+		}
 
 		// 用于跟踪已使用的方法名，确保唯一性
 		const existingMethodNames = new Set<string>();
@@ -1287,11 +1326,13 @@ private static generateControllerMethod(methodName: string, apiDef: ApiDefinitio
 			// 按照 operationId 排序
 			const sortedApis = this.sortApis(apis);
 
-			sortedApis.forEach((api: any) => {
-				const methodName = this.toMethodName(api, existingMethodNames);
-				const method = String(api.method).toLowerCase();
-				const respType = this.resolveResponseType(spec, api);
-				const pathExpr = '${basePath}' + String(api.path);
+		sortedApis.forEach((api: any) => {
+			const methodName = this.toMethodName(api, existingMethodNames);
+			const method = String(api.method).toLowerCase();
+			let respType = this.resolveResponseType(spec, api);
+			// 确保泛型类型有泛型参数
+			respType = this.ensureGenericTypesForApis(respType, genericTypeNames);
+			const pathExpr = '${basePath}' + String(api.path);
 
 			// 分类参数
 			const { bodyParam, bodyParams, queryParams, pathParams } = this.classifyParameters(api.parameters || []);
@@ -1344,14 +1385,15 @@ private static generateControllerMethod(methodName: string, apiDef: ApiDefinitio
 			return `${p.name}${optional}: ${paramType}`;
 		});
 
-				const argList = paramList.join(', ');
-				const payloadObj = queryParams.length > 0 ?
-					`{ ${queryParams.map((p: any) => p.name).join(', ')} }` :
-					`{}`;
+			const argList = paramList.join(', ');
+			// payload 应该包含所有参数（path 参数 + query 参数）
+			const payloadObj = allParams.length > 0 ?
+				`{ ${allParams.map((p: any) => p.name).join(', ')} }` :
+				`{}`;
 
-				lines.push(`  async ${methodName}(${argList}${argList ? ', ' : ''}axiosConfig?: AxiosRequestConfig): Promise<${respType}> {`);
-				lines.push(`    const path = \`${pathExpr}\`;`);
-				lines.push(`    const payload: Types.BaseRequestDTO = ${payloadObj};`);
+			lines.push(`  async ${methodName}(${argList}${argList ? ', ' : ''}axiosConfig?: AxiosRequestConfig): Promise<${respType}> {`);
+			lines.push(`    const path = \`${pathExpr}\`;`);
+			lines.push(`    const payload: Types.BaseRequestDTO = ${payloadObj};`);
 				lines.push(`    const ret = await $http.run<Types.BaseRequestDTO, ${respType}>(path, '${method}', payload, axiosConfig);`);
 				lines.push(`    return ret;`);
 				lines.push(`  },`);
@@ -1470,6 +1512,23 @@ private static generateControllerMethod(methodName: string, apiDef: ApiDefinitio
 			return this.convertSwaggerTypeToTSForApis(genericParam);
 		}
 
+		// 处理多个泛型参数（用逗号分隔，如 Map«string,string»）
+		// 需要小心处理嵌套的情况，比如 Map«string,List«UserDTO»»
+		if (genericParam.includes(',')) {
+			const parts = this.splitGenericParams(genericParam);
+			const convertedParts = parts.map(part => {
+				const trimmedPart = part.trim();
+				const mappedType = this.mapSwaggerTypeToTS(trimmedPart);
+				// 只有基本的 TypeScript 内置类型不加 Types. 前缀
+				if (this.isBasicTSType(mappedType)) {
+					return mappedType;
+				}
+				// 自定义类型加 Types. 前缀
+				return `Types.${mappedType}`;
+			});
+			return convertedParts.join(', ');
+		}
+
 		// 基本类型映射
 		const mappedType = this.mapSwaggerTypeToTS(genericParam);
 		// 只有基本的 TypeScript 内置类型不加 Types. 前缀
@@ -1478,6 +1537,39 @@ private static generateControllerMethod(methodName: string, apiDef: ApiDefinitio
 		}
 		// 自定义类型加 Types. 前缀（包括 PlainObject）
 		return `Types.${mappedType}`;
+	}
+
+	/**
+	 * 分割泛型参数（考虑嵌套的情况）
+	 * 例如：splitGenericParams("string,List«UserDTO»") -> ["string", "List«UserDTO»"]
+	 */
+	private static splitGenericParams(params: string): string[] {
+		const result: string[] = [];
+		let current = '';
+		let depth = 0;
+
+		for (let i = 0; i < params.length; i++) {
+			const char = params[i];
+			if (char === '«') {
+				depth++;
+				current += char;
+			} else if (char === '»') {
+				depth--;
+				current += char;
+			} else if (char === ',' && depth === 0) {
+				// 只在顶层逗号处分割
+				result.push(current.trim());
+				current = '';
+			} else {
+				current += char;
+			}
+		}
+
+		if (current.trim()) {
+			result.push(current.trim());
+		}
+
+		return result;
 	}
 
 	/**
