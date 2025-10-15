@@ -9,33 +9,64 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 				width: 100vw;
 				height: 100vh;
 				overflow: hidden;
+				margin: 0;
+				padding: 0;
 			}
 
 			.main-container {
-				max-width: 100%;
-				max-height: 100vh;
-				overflow-y: hidden;
-				margin: 0 auto;
+				display: flex;
+				flex-direction: column;
+				width: 100%;
+				height: 100vh;
+				overflow: hidden;
+				margin: 0;
 				padding: 20px 0;
 				box-sizing: border-box;
 			}
 
 			#basic-info-card {
 				margin: 0 10px;
+				flex-shrink: 0;
 			}
 
 			#basic-info-card .card-body {
 				padding: 15px 0;
+				transition: all 0.3s ease;
+				overflow: hidden;
+			}
+
+			#basic-info-card.collapsed .card-body {
+				max-height: 0;
+				padding: 0;
+				opacity: 0;
+			}
+
+			#toggle-info-btn {
+				transition: all 0.2s;
+			}
+
+			#toggle-info-btn:hover {
+				background-color: rgba(255,255,255,0.9) !important;
+			}
+
+			#toggle-icon {
+				transition: transform 0.3s ease;
+			}
+
+			#basic-info-card.collapsed #toggle-icon {
+				transform: rotate(-90deg);
 			}
 
 			#interface-card {
+				flex: 1;
 				margin-top: 15px;
-				height: calc(100vh - 272px);
 				overflow-y: auto;
+				min-height: 0;
 			}
 
 			#controller-toolbar {
 				margin: 10px 10px 0 10px;
+				flex-shrink: 0;
 			}
 
 			#refresh-btn {
@@ -321,10 +352,17 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 	<body>
 		<div class="main-container">
 			<!-- 基础信息卡片-->
-			<div class="doc-card card" id="basic-info-card">
-				<div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+		<div class="doc-card card" id="basic-info-card">
+			<div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+				<div class="d-flex align-items-center gap-2">
 					<h5 class="mb-0">文档信息</h5>
-					<div class="right-operate-btn d-flex align-items-center gap-2">
+					<button id="toggle-info-btn" class="btn btn-sm btn-light" style="padding: 2px 8px; font-size: 12px;" title="展开/收起">
+						<svg id="toggle-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+							<path d="M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z"/>
+						</svg>
+					</button>
+				</div>
+				<div class="right-operate-btn d-flex align-items-center gap-2">
 						<button id="refresh-btn" class="btn btn-sm btn-light">
 							<svg t="1754470396208" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="6944" width="18" height="18"><path d="M887.456 443.744l102.4 136.512h-76.064c-32.48 192.544-200 339.2-401.792 339.2a407.104 407.104 0 0 1-342.56-186.752 32 32 0 0 1 53.76-34.688A343.104 343.104 0 0 0 512 855.456c166.304 0 305.024-118.208 336.672-275.2h-63.616l102.4-136.512zM512 104.544c145.664 0 278.016 77.12 350.848 200.16a32 32 0 0 1-55.04 32.608A343.232 343.232 0 0 0 512 168.544c-178.176 0-324.64 135.648-341.76 309.312h68.704l-102.4 136.544-102.4-136.544H105.92C123.296 268.8 298.464 104.544 512 104.544z" fill="#515151" p-id="6945"></path></svg>
 							刷新文档
@@ -470,6 +508,14 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 			refreshBtn.addEventListener('click', handleRefreshDoc);
 
 			exportBtn.addEventListener('click', handleExportDoc);
+
+		// 文档信息展开/收起功能
+		const toggleInfoBtn = document.getElementById('toggle-info-btn');
+		const basicInfoCard = document.getElementById('basic-info-card');
+
+		toggleInfoBtn.addEventListener('click', function() {
+			basicInfoCard.classList.toggle('collapsed');
+		});
 
 			async function handleRefreshDoc() {
 				const btn = this;
