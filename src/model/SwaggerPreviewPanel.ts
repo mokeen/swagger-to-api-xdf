@@ -87,20 +87,25 @@ export class SwaggerPreviewPanel {
 				}, async () => {
 					try {
 						// 刷新时破坏缓存，确保获取最新数据
-						const updatedContent = await SwaggerFetcher.fetchSwaggerJson(basicInfo.url, true);
-							// 发送更新后的内容到webview
-							this._panel.webview.postMessage({
-								command: 'updateSwaggerContent',
-								content: updatedContent
-							});
-						} catch (error) {
-							vscode.window.showErrorMessage(`更新失败: ${error instanceof Error ? error.message : String(error)}`);
-							this._panel.webview.postMessage({
-								command: 'refreshSwaggerDocFailed',
-							});
-						}
-					});
-					break;
+						const updatedSwaggerJson = await SwaggerFetcher.fetchSwaggerJson(basicInfo.url, true);
+						// 构建完整的内容结构，包含 basicInfo 和 swaggerJson
+						const updatedContent = JSON.stringify({
+							basicInfo: basicInfo,
+							swaggerJson: updatedSwaggerJson
+						});
+						// 发送更新后的内容到webview
+						this._panel.webview.postMessage({
+							command: 'updateSwaggerContent',
+							content: updatedContent
+						});
+					} catch (error) {
+						vscode.window.showErrorMessage(`更新失败: ${error instanceof Error ? error.message : String(error)}`);
+						this._panel.webview.postMessage({
+							command: 'refreshSwaggerDocFailed',
+						});
+					}
+				});
+				break;
 				case 'exportSwaggerDoc':
 					if (workspaceFolders && workspaceFolders.length > 0) {
 						const workspacePath = workspaceFolders[0].uri.fsPath;

@@ -587,7 +587,7 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 				}
 			}
 
-			function initSwaggerPreview() {
+			function initSwaggerPreview(useExistingData = false) {
 				basicContainer.innerHTML = '';
 				interfaceContainer.innerHTML = '';
 				selectedApis = {};
@@ -595,8 +595,11 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 				updateSelectedCount();
 
 				try {
-					basicContent = JSON.parse(\`{{basicInfo}}\`);
-					swaggerJsonData = JSON.parse(\`{{swaggerJson}}\`);
+					// 只在首次加载时从模板变量解析，刷新时使用已更新的全局变量
+					if (!useExistingData) {
+						basicContent = JSON.parse(\`{{basicInfo}}\`);
+						swaggerJsonData = JSON.parse(\`{{swaggerJson}}\`);
+					}
 					// 1. 渲染基础信息
 					renderBasicInfo(basicContent);
 
@@ -1256,21 +1259,31 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 			window.addEventListener('message', event => {
 				const message = event.data;
 				switch (message.command) {
-					case 'existingApisResponse':
-						existingApiData = message.existingApiData || {};
-						markExistingApis();
-						break;
-					case 'updateSwaggerContent':
-						swaggerJsonData = message.content;
-						initSwaggerPreview();
+				case 'existingApisResponse':
+					existingApiData = message.existingApiData || {};
+					markExistingApis();
+					break;
+				case 'updateSwaggerContent':
+					try {
+						// 解析更新后的完整内容
+						const updatedData = JSON.parse(message.content);
+						basicContent = updatedData.basicInfo;
+						swaggerJsonData = updatedData.swaggerJson;
+						// 传入 true 参数，表示使用已更新的全局变量而不是模板变量
+						initSwaggerPreview(true);
 						// 重新请求已存在的API列表
 						vscode.postMessage({
 							command: 'getExistingApis'
 						});
 						toastBody.innerHTML = '文档更新成功！';
 						toast.show();
-						resetButtonState(refreshBtn, 'refresh');
-						break;
+					} catch (error) {
+						console.error('解析更新内容失败:', error);
+						toastBody.innerHTML = '文档更新失败：数据格式错误';
+						toast.show();
+					}
+					resetButtonState(refreshBtn, 'refresh');
+					break;
 					case 'refreshSwaggerDocFailed':
 						toastBody.innerHTML = '文档更新失败！';
 						toast.show();
