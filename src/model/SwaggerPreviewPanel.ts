@@ -79,14 +79,15 @@ export class SwaggerPreviewPanel {
 						});
 					}
 					break;
-				case 'refreshSwaggerDoc':
-					vscode.window.withProgress({
-						location: vscode.ProgressLocation.Notification,
-						title: `正在刷新${basicInfo.name}文档...`,
-						cancellable: false
-					}, async () => {
-						try {
-							const updatedContent = await SwaggerFetcher.fetchSwaggerJson(basicInfo.url);
+			case 'refreshSwaggerDoc':
+				vscode.window.withProgress({
+					location: vscode.ProgressLocation.Notification,
+					title: `正在刷新${basicInfo.name}文档...`,
+					cancellable: false
+				}, async () => {
+					try {
+						// 刷新时破坏缓存，确保获取最新数据
+						const updatedContent = await SwaggerFetcher.fetchSwaggerJson(basicInfo.url, true);
 							// 发送更新后的内容到webview
 							this._panel.webview.postMessage({
 								command: 'updateSwaggerContent',

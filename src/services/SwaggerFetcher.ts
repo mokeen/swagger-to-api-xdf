@@ -3,11 +3,26 @@ import * as https from "https";
 import { URL } from "url";
 
 export class SwaggerFetcher {
-	static async fetchSwaggerJson(swaggerUrl: string): Promise<any> {
+	static async fetchSwaggerJson(swaggerUrl: string, bustCache: boolean = false): Promise<any> {
 		return new Promise((resolve, reject) => {
 			try {
-				const jsonUrl = this.convertToApiUrl(swaggerUrl);
-				const req = https.get(jsonUrl, res => {
+				let jsonUrl = this.convertToApiUrl(swaggerUrl);
+
+				// 添加时间戳参数破坏缓存（用于刷新场景）
+				if (bustCache) {
+					const separator = jsonUrl.includes('?') ? '&' : '?';
+					jsonUrl = `${jsonUrl}${separator}_t=${Date.now()}`;
+				}
+
+				const options = {
+					headers: bustCache ? {
+						'Cache-Control': 'no-cache, no-store, must-revalidate',
+						'Pragma': 'no-cache',
+						'Expires': '0'
+					} : {}
+				};
+
+				const req = https.get(jsonUrl, options, res => {
 					// 处理HTTP错误状态码
 					if (res.statusCode! < 200 || res.statusCode! > 299) {
 						return reject(new Error(`HTTP Error: ${res.statusCode}`));
