@@ -4,6 +4,7 @@ import * as http from "http";
 import { v1 as uuidv1 } from 'uuid'
 import { getWebviewContent } from "../views/addSwagger";
 import { ContractService } from "../services/ContractService";
+import { SwaggerFetcher } from "../services/SwaggerFetcher";
 
 interface AddSwaggerMessage {
 	command: 'addSwagger';
@@ -101,6 +102,21 @@ export class AddSwaggerPanel {
 			// 验证输入
 			this._validateSwaggerInput(message);
 
+			// 🔒 后端验证：尝试获取 Swagger JSON，确保 URL 可访问
+			try {
+				await vscode.window.withProgress({
+					location: vscode.ProgressLocation.Notification,
+					title: "正在验证 Swagger 文档可访问性...",
+					cancellable: false
+				}, async () => {
+					await SwaggerFetcher.fetchSwaggerJson(message.url.trim());
+				});
+			} catch (fetchError) {
+				throw new Error(
+					`无法访问 Swagger 文档：${fetchError instanceof Error ? fetchError.message : String(fetchError)}`
+				);
+			}
+
 			// 添加合约
 			await ContractService.addContract(workspacePath, {
 				name: message.name.trim(),
@@ -131,19 +147,30 @@ export class AddSwaggerPanel {
 
 	private async _handleTestUrl(message: TestUrlMessage): Promise<void> {
 		try {
-			const available = await this._testUrlAvailability(message.url);
+			// 使用 SwaggerFetcher 获取 Swagger JSON
+			const swaggerJson = await SwaggerFetcher.fetchSwaggerJson(message.url);
+			
+			// 提取 info 信息用于自动填充
+			const info = swaggerJson?.info || {};
+			
 			this._sendMessage({
 				command: "testUrlResult",
-				available,
-				url: message.url
+				available: true,
+				url: message.url,
+				info: {
+					title: info.title || '',
+					description: info.description || '',
+					version: info.version || ''
+				}
 			});
 		} catch (error) {
 			console.error('Error testing URL:', error);
+			const errorMsg = error instanceof Error ? error.message : 'URL测试失败';
 			this._sendMessage({
 				command: "testUrlResult",
 				available: false,
 				url: message.url,
-				error: 'URL测试失败'
+				error: errorMsg
 			});
 		}
 	}
@@ -231,41 +258,5 @@ export class AddSwaggerPanel {
 		return "添加失败: 未知错误";
 	}
 
-	private _testUrlAvailability(url: string): Promise<boolean> {
-		return new Promise((resolve) => {
-			try {
-				const urlObj = new URL(url);
-				const isHttps = urlObj.protocol === 'https:';
-				const client = isHttps ? https : http;
-
-				const options = {
-					method: 'HEAD',
-					timeout: 10000, // 10秒超时
-					headers: {
-						'User-Agent': 'VSCode-Swagger-Extension/1.0'
-					}
-				};
-
-				const req = client.request(url, options, (res) => {
-					// 2xx和3xx状态码都认为是可用的
-					resolve(res.statusCode !== undefined && res.statusCode >= 200 && res.statusCode < 400);
-				});
-
-				req.on('error', (error) => {
-					console.error('URL test error:', error);
-					resolve(false);
-				});
-
-				req.on('timeout', () => {
-					req.destroy();
-					resolve(false);
-				});
-
-				req.end();
-			} catch (error) {
-				console.error('Invalid URL for testing:', error);
-				resolve(false);
-			}
-		});
-	}
+	// 移除旧的 _testUrlAvailability 方法，现在直接使用 SwaggerFetcher
 }

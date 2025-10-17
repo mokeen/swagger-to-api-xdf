@@ -80,12 +80,27 @@ export const addSwaggerTemplate = `<!DOCTYPE html>
 		// DOM元素缓存
 		const elements = {};
 
+		// 定时器管理
+		const activeTimers = [];
+		function addTimer(timerId) {
+			activeTimers.push(timerId);
+			return timerId;
+		}
+		function clearAllTimers() {
+			activeTimers.forEach(timer => clearTimeout(timer));
+			activeTimers.length = 0;
+		}
+
 		// 初始化
 		document.addEventListener('DOMContentLoaded', function() {
 			initializeElements();
 			bindEvents();
 			setupFormValidation();
 		});
+
+		// 页面卸载时清理所有定时器
+		window.addEventListener('beforeunload', clearAllTimers);
+		window.addEventListener('unload', clearAllTimers);
 
 		function initializeElements() {
 			elements.form = document.getElementById("swaggerForm");
@@ -122,6 +137,29 @@ export const addSwaggerTemplate = `<!DOCTYPE html>
 			// 表单验证
 			if (!form.checkValidity()) {
 				form.classList.add("was-validated");
+				return;
+			}
+
+			// 检查URL是否与上次测试的一致
+			const currentUrl = elements.urlInput.value.trim();
+			if (currentUrl !== appState.lastTestedUrl) {
+				showFieldError(elements.urlInput, '请先测试链接是否可访问');
+				vscode.postMessage({
+					command: 'showAlert',
+					text: '⚠️ 请先点击"测试链接"按钮验证URL可访问性',
+					type: 'warning'
+				});
+				return;
+			}
+
+			// 检查测试结果
+			if (!appState.testResult || !appState.testResult.available) {
+				showFieldError(elements.urlInput, '链接测试未通过，请修改后重新测试');
+				vscode.postMessage({
+					command: 'showAlert',
+					text: '❌ 链接测试未通过，无法添加文档',
+					type: 'warning'
+				});
 				return;
 			}
 
@@ -323,16 +361,30 @@ export const addSwaggerTemplate = `<!DOCTYPE html>
 				updateTestButton('success');
 				clearFieldError(elements.urlInput);
 
+				// 自动填充表单字段（仅当用户未填写时）
+				if (result.info) {
+					// 自动填充名称（如果为空）
+					if (!elements.nameInput.value.trim() && result.info.title) {
+						elements.nameInput.value = result.info.title;
+						elements.nameInput.classList.add('is-valid');
+					}
+					
+					// 自动填充描述（如果为空）
+					if (!elements.descInput.value.trim() && result.info.description) {
+						elements.descInput.value = result.info.description;
+					}
+				}
+
 				// 3秒后恢复默认状态
-				setTimeout(() => {
+				addTimer(setTimeout(() => {
 					if (appState.testResult === result) {
 						updateTestButton('default');
 					}
-				}, 3000);
+				}, 3000));
 
 				vscode.postMessage({
 					command: 'showAlert',
-					text: '✅ Swagger文档可正常访问',
+					text: '✅ Swagger文档可正常访问，已自动填充文档信息',
 					type: 'info'
 				});
 			} else {
@@ -340,11 +392,11 @@ export const addSwaggerTemplate = `<!DOCTYPE html>
 				showFieldError(elements.urlInput, result.error || '无法访问此URL');
 
 				// 3秒后恢复默认状态
-				setTimeout(() => {
+				addTimer(setTimeout(() => {
 					if (appState.testResult === result) {
 						updateTestButton('default');
 					}
-				}, 3000);
+				}, 3000));
 
 				vscode.postMessage({
 					command: 'showAlert',
