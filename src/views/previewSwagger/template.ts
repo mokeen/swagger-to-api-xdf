@@ -417,6 +417,20 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 		<script>
 			const vscode = acquireVsCodeApi();
 
+			// 全局定时器管理
+			window.globalTimers = [];
+			function addGlobalTimer(timerId) {
+				window.globalTimers.push(timerId);
+				return timerId;
+			}
+			function clearAllGlobalTimers() {
+				window.globalTimers.forEach(timer => clearTimeout(timer));
+				window.globalTimers = [];
+			}
+			// 页面卸载时清理所有定时器
+			window.addEventListener('beforeunload', clearAllGlobalTimers);
+			window.addEventListener('unload', clearAllGlobalTimers);
+
 			// 安全转义HTML特殊字符
 			function escapeHtml(unsafe) {
 				if (!unsafe) return '';
@@ -752,8 +766,7 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 				});
 
 				// 5. 主动触发第一个按钮的点击事件
-				const timer = setTimeout(() => {
-					clearTimeout(timer);
+				addGlobalTimer(setTimeout(() => {
 					const firstButton = document.querySelector('#controllerAccordion .accordion-button');
 					if (firstButton) {
 						firstButton.dispatchEvent(new MouseEvent('click', {
@@ -761,7 +774,7 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 							cancelable: true
 						}));
 					}
-				}, 50);
+				}, 50));
 			}
 
 			function loadTagApis(tagName) {
@@ -1391,9 +1404,10 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 					activeTimers = [];
 				}
 
-				// 添加定时器到管理列表
+				// 添加定时器到管理列表（同时添加到全局和局部）
 				function addTimer(timer) {
 					activeTimers.push(timer);
+					addGlobalTimer(timer); // 同时添加到全局管理
 				}
 
 				if (globalSelectAllBtn) {
@@ -1430,6 +1444,12 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 						}
 
 						let expandedCount = 0;
+						// 备用超时机制（在外层声明，便于取消）
+						const fallbackTimer = setTimeout(() => {
+							resolve();
+						}, 3000);
+						addTimer(fallbackTimer);
+
 						unopenedButtons.forEach(button => {
 							// 监听展开完成事件
 							const targetId = button.getAttribute('data-bs-target');
@@ -1440,6 +1460,7 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 									expandedCount++;
 									targetElement.removeEventListener('shown.bs.collapse', handleShown);
 									if (expandedCount === unopenedButtons.length) {
+										clearTimeout(fallbackTimer); // 取消备用定时器
 										resolve();
 									}
 								};
@@ -1448,12 +1469,6 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 
 							button.click();
 						});
-
-						// 备用超时机制
-						const fallbackTimer = setTimeout(() => {
-							resolve();
-						}, 3000);
-						addTimer(fallbackTimer);
 					});
 				}
 
@@ -1533,11 +1548,8 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 							}
 						}
 
-						// 短暂延迟后完成，确保DOM更新
-						const completionTimer = setTimeout(() => {
-							resolve();
-						}, 150);
-						addTimer(completionTimer);
+						// DOM 操作已完成，直接 resolve（markingTimer 是异步的，不影响主流程）
+						resolve();
 					});
 				}
 
