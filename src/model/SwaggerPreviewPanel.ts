@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { getWebviewContent } from '../views/previewSwagger';
 import { SwaggerFetcher } from '../services/SwaggerFetcher';
 import { ApiGenerationService } from '../services/ApiGenerationService';
+import { SpecAdapter } from '../services/SpecAdapter';
 
 export class SwaggerPreviewPanel {
 	private static readonly viewType = 'swaggerPreview';
@@ -12,6 +13,7 @@ export class SwaggerPreviewPanel {
 	private readonly _disposables: vscode.Disposable[] = [];
 	private readonly _context: vscode.ExtensionContext;
 	public docId: string;
+	private _normalizedSwaggerJson: any; // 保存规范化后的数据，避免重复规范化
 
 	public static show(context: vscode.ExtensionContext, content: string) {
 		const { basicInfo } = JSON.parse(content);
@@ -43,7 +45,23 @@ export class SwaggerPreviewPanel {
 		const { basicInfo, swaggerJson } = JSON.parse(content);
 		this.docId = basicInfo.uid;
 
-		this._panel.webview.html = getWebviewContent(content, context, this._panel.webview);
+		// 规范化 Swagger/OpenAPI 数据（统一为 Swagger 2.0 格式）
+		const normalizedSpec = SpecAdapter.normalize(swaggerJson);
+		this._normalizedSwaggerJson = {
+			...swaggerJson,
+			paths: normalizedSpec.paths,
+			definitions: normalizedSpec.definitions,
+			basePath: normalizedSpec.basePath,
+			tags: normalizedSpec.tags  // 使用规范化的 tags
+		};
+
+		// 重新构建规范化后的 content
+		const normalizedContent = JSON.stringify({
+			basicInfo,
+			swaggerJson: this._normalizedSwaggerJson
+		});
+
+		this._panel.webview.html = getWebviewContent(normalizedContent, context, this._panel.webview);
 
 		this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
@@ -88,11 +106,23 @@ export class SwaggerPreviewPanel {
 					try {
 						// 刷新时破坏缓存，确保获取最新数据
 						const updatedSwaggerJson = await SwaggerFetcher.fetchSwaggerJson(basicInfo.url, true);
-						// 构建完整的内容结构，包含 basicInfo 和 swaggerJson
+						
+						// 规范化 Swagger/OpenAPI 数据并保存
+						const normalizedSpec = SpecAdapter.normalize(updatedSwaggerJson);
+						this._normalizedSwaggerJson = {
+							...updatedSwaggerJson,
+							paths: normalizedSpec.paths,
+							definitions: normalizedSpec.definitions,
+							basePath: normalizedSpec.basePath,
+							tags: normalizedSpec.tags  // 使用规范化的 tags
+						};
+						
+						// 构建完整的内容结构，包含 basicInfo 和规范化后的 swaggerJson
 						const updatedContent = JSON.stringify({
 							basicInfo: basicInfo,
-							swaggerJson: updatedSwaggerJson
+							swaggerJson: this._normalizedSwaggerJson
 						});
+						
 						// 发送更新后的内容到webview
 						this._panel.webview.postMessage({
 							command: 'updateSwaggerContent',
@@ -111,7 +141,8 @@ export class SwaggerPreviewPanel {
 						const workspacePath = workspaceFolders[0].uri.fsPath;
 						const selectedApis = message.content;
 
-						const res = await ApiGenerationService.generateApiFiles(workspacePath, this._context, swaggerJson, selectedApis);
+						// 使用已规范化的数据，避免重复规范化
+						const res = await ApiGenerationService.generateApiFiles(workspacePath, this._context, this._normalizedSwaggerJson, selectedApis);
 						if (res && res.ok) {
 							this._panel.webview.postMessage({ command: 'exportApiSuccess' });
 						} else {

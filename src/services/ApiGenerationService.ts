@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { ContractService } from "./ContractService";
+import { SpecAdapter } from "./SpecAdapter";
 
 /**
  * 类型定义数据结构
@@ -331,9 +332,12 @@ export class ApiGenerationService {
 		selectedApis: { [controller: string]: any[] }
 	): Promise<{ ok: boolean; message?: string }> {
 		try {
+			// 规范化 spec（统一 Swagger 2.0 和 OpenAPI 3.x）
+			const normalizedSpec = SpecAdapter.normalize(swaggerJson);
+
 			// 获取原始名称（优先使用 description，其次使用 title）
-			const rawName = swaggerJson.info
-				? (swaggerJson.info.description || swaggerJson.info.title)
+			const rawName = normalizedSpec.info
+				? (normalizedSpec.info.description || normalizedSpec.info.title)
 				: undefined;
 
 			// 使用统一的方法生成文件夹名（PascalCase）
@@ -371,8 +375,8 @@ export class ApiGenerationService {
 			});
 
 			const filteredPaths: Record<string, any> = {};
-			if (swaggerJson && swaggerJson.paths) {
-				for (const [p, methods] of Object.entries<any>(swaggerJson.paths)) {
+			if (normalizedSpec && normalizedSpec.paths) {
+				for (const [p, methods] of Object.entries<any>(normalizedSpec.paths)) {
 					const keptMethods: Record<string, any> = {};
 					for (const [m, op] of Object.entries<any>(methods)) {
 						if (picked.has(`${p}::${m.toLowerCase()}`)) {
@@ -390,9 +394,9 @@ export class ApiGenerationService {
 				return { ok: false, message: "未选择任何接口" };
 			}
 
-			// 构建过滤后的Swagger规范
+			// 构建过滤后的规范
 			const spec: any = {
-				...swaggerJson,
+				...normalizedSpec,
 				paths: filteredPaths,
 			};
 
@@ -1213,6 +1217,17 @@ export class ApiGenerationService {
 					tagDescriptions.set(tag.name, tag.description);
 				}
 			}
+		}
+
+		// 对于 OpenAPI 3.x，从 paths 中收集 tags（如果没有顶层 tags 定义）
+		if ((!spec.tags || spec.tags.length === 0) && spec.paths) {
+			const collectedTags = SpecAdapter.collectTags(spec.paths);
+			collectedTags.forEach(tag => {
+				if (!tagDescriptions.has(tag)) {
+					// 使用 tag 名称作为描述（如果没有明确的描述）
+					tagDescriptions.set(tag, tag);
+				}
+			});
 		}
 
 		// 按 controller 分组（使用 mergedApiData）

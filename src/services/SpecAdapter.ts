@@ -9,6 +9,7 @@ export interface NormalizedSpec {
 	basePath?: string;
 	paths: any;
 	definitions: any; // 统一的类型定义
+	tags: any[]; // 统一的 tags（包含从 paths 收集的）
 }
 
 export class SpecAdapter {
@@ -41,15 +42,16 @@ export class SpecAdapter {
 	}
 
 	/**
-	 * Swagger 2.0 规范化（直接返回，不需要转换）
+	 * Swagger 2.0 规范化（保持原样，只处理 tags）
 	 */
 	private static normalizeSwagger2(spec: any): NormalizedSpec {
 		return {
 			version: '2.0',
 			info: spec.info || {},
 			basePath: spec.basePath || '',
-			paths: spec.paths || {},
-			definitions: spec.definitions || {},
+			paths: spec.paths || {},  // Swagger 2.0 保持原样
+			definitions: spec.definitions || {},  // Swagger 2.0 保持原样
+			tags: this.normalizeTags(spec),
 		};
 	}
 
@@ -63,15 +65,19 @@ export class SpecAdapter {
 			basePath: this.extractBasePath(spec),
 			paths: {},
 			definitions: {},
+			tags: [],
 		};
 
-		// 转换 components.schemas 为 definitions
+		// 转换 components.schemas 为 definitions（递归转换所有 $ref）
 		if (spec.components && spec.components.schemas) {
-			normalized.definitions = spec.components.schemas;
+			normalized.definitions = this.normalizeDefinitions(spec.components.schemas);
 		}
 
 		// 转换 paths
 		normalized.paths = this.normalizePaths(spec.paths || {});
+
+		// 规范化 tags
+		normalized.tags = this.normalizeTags(spec);
 
 		return normalized;
 	}
@@ -91,6 +97,19 @@ export class SpecAdapter {
 			}
 		}
 		return '';
+	}
+
+	/**
+	 * 规范化 definitions（递归转换所有 $ref 引用）- 仅用于 OpenAPI 3.x
+	 */
+	private static normalizeDefinitions(schemas: any): any {
+		const normalized: any = {};
+
+		for (const [name, schema] of Object.entries<any>(schemas)) {
+			normalized[name] = this.normalizeSchema(schema);
+		}
+
+		return normalized;
 	}
 
 	/**
@@ -186,19 +205,31 @@ export class SpecAdapter {
 			return schema;
 		}
 
+		// 如果有 $ref，优先处理并直接返回（$ref 不应该和其他字段混合）
+		if (schema.$ref) {
+			// 转换 OpenAPI 3.x 的 $ref 路径
+			if (schema.$ref.includes('#/components/schemas/')) {
+				return {
+					$ref: schema.$ref.replace('#/components/schemas/', '#/definitions/')
+				};
+			}
+			// Swagger 2.0 的 $ref 直接返回
+			return { $ref: schema.$ref };
+		}
+
 		const normalized: any = { ...schema };
 
 		// 处理 anyOf（可空类型）
-		// 例如：anyOf: [{ type: "string" }, { type: "null" }] -> type: "string"
+		// 例如：anyOf: [{ $ref: "..." }, { type: "null" }] -> 直接返回规范化的 $ref
 		if (schema.anyOf && Array.isArray(schema.anyOf)) {
 			const nonNullTypes = schema.anyOf.filter((s: any) => s.type !== 'null');
 			if (nonNullTypes.length === 1) {
-				// 单一非空类型，直接使用
-				Object.assign(normalized, nonNullTypes[0]);
-				delete normalized.anyOf;
+				// 单一非空类型，递归规范化并返回
+				return this.normalizeSchema(nonNullTypes[0]);
 			} else if (nonNullTypes.length > 1) {
 				// 多个非空类型，保留 anyOf
 				normalized.anyOf = nonNullTypes.map((s: any) => this.normalizeSchema(s));
+				delete normalized.type;  // 删除 type 字段（anyOf 不应该有 type）
 			}
 		}
 
@@ -215,16 +246,95 @@ export class SpecAdapter {
 			}
 		}
 
-		// 转换 $ref（OpenAPI 3.x: #/components/schemas/X -> Swagger 2.0: #/definitions/X）
-		if (schema.$ref && schema.$ref.includes('#/components/schemas/')) {
-			normalized.$ref = schema.$ref.replace('#/components/schemas/', '#/definitions/');
+		// 处理 additionalProperties
+		if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
+			normalized.additionalProperties = this.normalizeSchema(schema.additionalProperties);
+		}
+
+		// 处理 allOf
+		if (schema.allOf && Array.isArray(schema.allOf)) {
+			normalized.allOf = schema.allOf.map((s: any) => this.normalizeSchema(s));
+		}
+
+		// 处理 oneOf
+		if (schema.oneOf && Array.isArray(schema.oneOf)) {
+			normalized.oneOf = schema.oneOf.map((s: any) => this.normalizeSchema(s));
 		}
 
 		return normalized;
 	}
 
 	/**
-	 * 从规范化的 paths 中收集所有 tags
+	 * 规范化 tags（统一处理 Swagger 2.0 和 OpenAPI 3.x 的 tags）
+	 * 
+	 * 规则：
+	 * 1. 优先使用顶层 tags 定义
+	 * 2. 从 paths 中收集实际使用的 tags
+	 * 3. 为没有 tag 的 path 创建 default tag
+	 * 4. tag 的 description 默认使用 name
+	 */
+	private static normalizeTags(spec: any): any[] {
+		const tagMap = new Map<string, any>();
+		const DEFAULT_TAG = 'default';
+
+		// 1️⃣ 处理顶层 tags 定义
+		if (spec.tags && Array.isArray(spec.tags)) {
+			spec.tags.forEach((tag: any) => {
+				if (tag.name) {
+					tagMap.set(tag.name, {
+						name: tag.name,
+						description: tag.description || tag.name
+					});
+				}
+			});
+		}
+
+		// 2️⃣ 从 paths 中收集实际使用的 tags
+		if (spec.paths) {
+			Object.values<any>(spec.paths).forEach((pathItem: any) => {
+				if (pathItem && typeof pathItem === 'object') {
+					['get', 'post', 'put', 'delete', 'patch', 'options', 'head'].forEach((method: string) => {
+						const operation = pathItem[method];
+						if (operation) {
+							if (operation.tags && Array.isArray(operation.tags)) {
+								// 有 tags：添加到 tagMap
+								operation.tags.forEach((tagName: string) => {
+									if (!tagMap.has(tagName)) {
+										tagMap.set(tagName, {
+											name: tagName,
+											description: tagName
+										});
+									}
+								});
+							} else {
+								// 没有 tags：归属于 default
+								if (!tagMap.has(DEFAULT_TAG)) {
+									tagMap.set(DEFAULT_TAG, {
+										name: DEFAULT_TAG,
+										description: DEFAULT_TAG
+									});
+								}
+							}
+						}
+					});
+				}
+			});
+		}
+
+		// 3️⃣ 确保至少有一个 default tag（如果没有任何 tags）
+		if (tagMap.size === 0) {
+			tagMap.set(DEFAULT_TAG, {
+				name: DEFAULT_TAG,
+				description: DEFAULT_TAG
+			});
+		}
+
+		// 4️⃣ 转换为数组并返回
+		return Array.from(tagMap.values());
+	}
+
+	/**
+	 * 从规范化的 paths 中收集所有 tags（工具方法，用于外部调用）
 	 */
 	static collectTags(paths: any): Set<string> {
 		const tags = new Set<string>();
