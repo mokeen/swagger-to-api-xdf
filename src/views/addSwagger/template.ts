@@ -53,7 +53,7 @@ export const addSwaggerTemplate = `<!DOCTYPE html>
 				</div>
 
 				<div class="d-flex gap-2 mt-4">
-					<button type="button" id="testUrlBtn" class="btn btn-outline-primary flex-grow-1" onclick="testSwaggerUrl()">
+					<button type="button" id="testUrlBtn" class="btn btn-outline-primary flex-grow-1">
 						<i class="bi bi-link-45deg"></i> 测试链接
 					</button>
 
@@ -265,12 +265,17 @@ export const addSwaggerTemplate = `<!DOCTYPE html>
 			try {
 				const urlObj = new URL(url);
 				const validProtocol = ['http:', 'https:'].includes(urlObj.protocol);
-				const validPath = /(\\/swagger.*|\\.json)$/i.test(urlObj.pathname);
 
-				return validProtocol &&
-					urlObj.hostname.includes('.') &&
-					!urlObj.hostname.startsWith(' ') &&
-					validPath;
+				// 支持 Swagger 2.0 和 OpenAPI 3.x 的常见路径
+				// - Swagger 2.0: /swagger-ui.html, /swagger/..., /v2/api-docs
+				// - OpenAPI 3.x: /docs, /redoc, /openapi.json, /v3/api-docs
+				// - 通用: /api-docs, /api/...
+				const validPath = /(\\/swagger|\\/docs|\\/redoc|\\/api-docs|\\/v[0-9]\\/api-docs|\\.json$|\\/api\\/)/i.test(urlObj.pathname);
+
+				// hostname 验证：不为空且不以空格开头（支持 localhost 等本地地址）
+				const validHostname = urlObj.hostname.trim().length > 0 && !urlObj.hostname.startsWith(' ');
+
+				return validProtocol && validHostname && validPath;
 			} catch {
 				return false;
 			}
@@ -368,7 +373,7 @@ export const addSwaggerTemplate = `<!DOCTYPE html>
 						elements.nameInput.value = result.info.title;
 						elements.nameInput.classList.add('is-valid');
 					}
-					
+
 					// 自动填充描述（如果为空）
 					if (!elements.descInput.value.trim() && result.info.description) {
 						elements.descInput.value = result.info.description;

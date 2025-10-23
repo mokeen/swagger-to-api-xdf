@@ -1,4 +1,3 @@
-import * as vscode from "vscode";
 import * as https from "https";
 import * as http from "http";
 import { URL } from "url";
@@ -77,8 +76,8 @@ export class SwaggerFetcher {
 					reject(new Error('Timeout'));
 				});
 
-				// 设置超时时间（缩短到3秒，因为要尝试多个URL）
-				req.setTimeout(3000);
+				// 设置超时时间（增加到10秒，确保网络较慢时也能成功）
+				req.setTimeout(10000);
 			} catch (err) {
 				reject(err);
 			}
@@ -93,24 +92,57 @@ export class SwaggerFetcher {
 	private static convertToApiUrls(uiUrl: string): string[] {
 		try {
 			const url = new URL(uiUrl);
+			const candidates: string[] = [];
 
-			// 清除哈希部分和可能的路由片段
-			const cleanPath = url.pathname
-				.replace(/\/swagger-ui\.html.*$/, '') // 移除swagger-ui.html及后续字符
-				.replace(/\/$/, ''); // 移除末尾斜杠
+			// 1️⃣ 如果 URL 已经是 JSON 文件或 API 端点，优先尝试原始 URL
+			const isJsonFile = url.pathname.endsWith('.json');
+			const isApiEndpoint = /\/(v[0-9]\/)?api-docs$/.test(url.pathname); // /api-docs, /v2/api-docs, /v3/api-docs
 
-			// 常见的 Swagger JSON 路径模式（按使用频率排序）
+			if (isJsonFile || isApiEndpoint) {
+				candidates.push(uiUrl);
+			}
+
+			// 2️⃣ 清除哈希部分和文档页面路径，准备拼接候选路径
+			let cleanPath = url.pathname
+				.replace(/\/swagger-ui\.html.*$/, '') // 移除 swagger-ui.html 及后续字符 (Swagger 2.0)
+				.replace(/\/docs\/?.*$/, '')          // 移除 /docs 或 /docs/ 及后续字符 (OpenAPI 3.x)
+				.replace(/\/redoc\/?.*$/, '')         // 移除 /redoc 或 /redoc/ 及后续字符 (OpenAPI 3.x)
+				.replace(/\/$/, '');                  // 移除末尾斜杠
+
+			// 如果原始 URL 是 JSON 文件，移除文件名，只保留目录路径
+			if (isJsonFile) {
+				cleanPath = cleanPath.substring(0, cleanPath.lastIndexOf('/'));
+			}
+
+			// 如果是 API 端点，不需要继续生成其他候选（已经是正确的端点）
+			if (isApiEndpoint) {
+				return candidates;
+			}
+
+			// 3️⃣ 常见的 Swagger/OpenAPI JSON 路径模式（按使用频率排序）
 			const jsonPaths = [
-				'/v2/api-docs',          // SpringBoot 2.x 标准路径
-				'/v3/api-docs',          // SpringBoot 3.x (Springdoc)
-				'/swagger/v2/api-docs',  // 自定义 context path
+				'/openapi.json',         // OpenAPI 3.x 标准路径 (FastAPI, Python 等框架) - 最常见
+				'/v2/api-docs',          // SpringBoot 2.x 标准路径 (Swagger 2.0)
+				'/v3/api-docs',          // SpringBoot 3.x (Springdoc OpenAPI 3.x)
+				'/swagger.json',         // Swagger 2.0 部分框架使用
 				'/api-docs',             // 简化路径
-				'/swagger.json',         // 部分框架使用
-				'/api/swagger.json'      // RESTful 风格
+				'/swagger/v2/api-docs',  // 自定义 context path
+				'/api/swagger.json',     // RESTful 风格
+				'/api/openapi.json'      // RESTful 风格 (OpenAPI 3.x)
 			];
 
-			// 生成所有候选 URL
-			return jsonPaths.map(jsonPath => `${url.origin}${cleanPath}${jsonPath}`);
+			// 4️⃣ 生成所有候选 URL（避免重复）
+			const candidateSet = new Set(candidates); // 已包含原始 URL（如果是 .json）
+
+			for (const jsonPath of jsonPaths) {
+				const candidateUrl = `${url.origin}${cleanPath}${jsonPath}`;
+				if (!candidateSet.has(candidateUrl)) {
+					candidates.push(candidateUrl);
+					candidateSet.add(candidateUrl);
+				}
+			}
+
+			return candidates;
 		} catch {
 			throw new Error('Invalid URL format');
 		}
