@@ -135,8 +135,9 @@ export class ApiGenerationService {
 			while ((controllerMatch = controllerRegex.exec(apisContent)) !== null) {
 				const controllerName = controllerMatch[1];
 				const controllerContent = controllerMatch[2];
-				// 标准化 controller 名称，确保与 mergeApiData 中的命名一致
-				const tagName = this.normalizeControllerName(controllerName);
+				// 从已生成的变量名（如 defaultController）转换为标准格式（如 DefaultController）
+				// 注意：这里的 controllerName 已经是生成时规范化的结果，只需转换首字母大小写
+				const tagName = controllerName.charAt(0).toUpperCase() + controllerName.slice(1);
 				const methods: any[] = [];
 
 				// 提取方法信息
@@ -187,9 +188,9 @@ export class ApiGenerationService {
 		const mergedData: { [controller: string]: any[] } = {};
 
 		// 首先添加所有已存在的API数据
+		// 注意：existingApiData 的 key 已经是标准格式（如 DefaultController），不需要再规范化
 		for (const [controller, apis] of Object.entries(existingApiData)) {
-			const normalizedName = this.normalizeControllerName(controller);
-			mergedData[normalizedName] = [...apis];
+			mergedData[controller] = [...apis];
 		}
 
 		// 然后处理新选择的API，覆盖或添加
@@ -430,20 +431,43 @@ export class ApiGenerationService {
 	}
 
 	/**
-	 * 生成方法名，格式：{baseName}_{pathHash}
+	 * 生成方法名
+	 *
+	 * 支持多种 operationId 格式：
+	 * - FastAPI: `function_name_path_method` → 智能提取函数名
+	 * - SpringBoot: `methodNameUsingPOST` → 移除后缀
+	 * - 无 operationId：根据路径和方法生成
+	 *
+	 * 冲突处理：只在方法名重复时才添加 pathHash
 	 */
 	private static toMethodName(
 		api: any,
 		existingNames: Set<string> = new Set()
 	): string {
 		let baseName = "";
+
 		if (api.operationId) {
-			baseName =
-				api.operationId.replace(
+			// 1. 处理 SpringBoot 格式：methodNameUsingPOST
+			if (/Using(POST|GET|PUT|DELETE|PATCH|HEAD|OPTIONS)(_\d+)?$/i.test(api.operationId)) {
+				baseName = api.operationId.replace(
 					/Using(POST|GET|PUT|DELETE|PATCH|HEAD|OPTIONS)(_\d+)?$/i,
 					""
-				) || api.operationId;
+				);
+			}
+			// 2. 处理 FastAPI 格式：function_name_path_method
+			else if (/_(?:get|post|put|delete|patch|head|options)$/i.test(api.operationId)) {
+				// 移除末尾的 _method 后缀
+				const withoutMethod = api.operationId.replace(/_(?:get|post|put|delete|patch|head|options)$/i, "");
+
+				// 智能去重：处理 FastAPI 路径和函数名重复的情况
+				baseName = this.deduplicateFastAPIOperationId(withoutMethod);
+			}
+			// 3. 其他格式：直接使用
+			else {
+				baseName = api.operationId;
+			}
 		} else {
+			// 无 operationId：根据路径和方法生成
 			const pathParts = (api.path || "").split("/").filter(Boolean);
 			const lastPart = pathParts[pathParts.length - 1] || "unknown";
 			const method = String(api.method || "get").toLowerCase();
@@ -452,10 +476,66 @@ export class ApiGenerationService {
 			)}`;
 		}
 
-		const pathHash = this.generatePathHash(api.path || "");
-		const methodName = `${baseName}_${pathHash}`;
+		// 处理冲突：只在方法名已存在时才添加 pathHash
+		let methodName = baseName;
+		if (existingNames.has(methodName)) {
+			const pathHash = this.generatePathHash(api.path || "");
+			methodName = `${baseName}_${pathHash}`;
+		}
+
 		existingNames.add(methodName);
 		return methodName;
+	}
+
+	/**
+	 * FastAPI operationId 去重
+	 *
+	 * FastAPI 格式：{函数名}_{路径转下划线}
+	 * 问题：函数名经常和路径重复
+	 *
+	 * @example
+	 * "get_features_get_features" → "get_features"
+	 * "insert_question_log_user_logs_insert_question_log" → "insert_question_log"
+	 * "get_kp_statistics_question_kp_statistics" → "get_kp_statistics"
+	 */
+	private static deduplicateFastAPIOperationId(name: string): string {
+		const parts = name.split('_');
+
+		// 策略1: 头尾匹配（最常见）
+		// 例如：insert_question_log_user_logs_insert_question_log
+		//       └──────头部──────┘              └──────尾部──────┘
+		for (let len = Math.floor(parts.length / 2); len > 0; len--) {
+			const head = parts.slice(0, len).join('_');
+			const tail = parts.slice(-len).join('_');
+
+			if (head === tail) {
+				// 头尾相同，只保留头部（函数名）
+				return head;
+			}
+		}
+
+		// 策略2: 连续重复
+		// 例如：get_features_get_features
+		for (let len = Math.floor(parts.length / 2); len > 0; len--) {
+			for (let i = 0; i <= parts.length - len * 2; i++) {
+				const first = parts.slice(i, i + len).join('_');
+				const second = parts.slice(i + len, i + len * 2).join('_');
+
+				if (first === second) {
+					const before = parts.slice(0, i).join('_');
+					const after = parts.slice(i + len * 2).join('_');
+					const result = [before, first, after].filter(Boolean).join('_');
+
+					// 递归去重（可能有多层重复）
+					if (result !== name && result) {
+						return this.deduplicateFastAPIOperationId(result);
+					}
+				}
+			}
+		}
+
+		// 策略3: 无重复，保持原样
+		return name;
 	}
 
 	/**
@@ -510,7 +590,9 @@ export class ApiGenerationService {
 		lines.push("export type BaseRequestDTO = { [key: string]: any };");
 		lines.push("");
 
-		if (!spec.definitions) {
+		if (!spec.definitions || Object.keys(spec.definitions).length === 0) {
+			console.warn('[ApiGeneration] 文档中没有找到类型定义 (definitions 为空)');
+			console.warn('[ApiGeneration] 将只生成接口声明，不生成 types.ts');
 			return lines.join("\n");
 		}
 
@@ -564,7 +646,7 @@ export class ApiGenerationService {
 		const processedTypes = new Set<string>();
 		const typesToProcess: string[] = [];
 
-		// 先收集接口直接依赖的类型
+		// 收集起点类型
 		apiPool.forEach((apiDef) => {
 			apiDef.allTypes.forEach((typeName) => {
 				if (!processedTypes.has(typeName)) {
@@ -574,8 +656,20 @@ export class ApiGenerationService {
 			});
 		});
 
-		// 递归收集类型的依赖
+		// BFS 遍历类型依赖树（带循环引用检测）
+		let iterationCount = 0;
+		const maxIterations = typesPool.size * 10; // 防止无限循环
+
 		while (typesToProcess.length > 0) {
+			iterationCount++;
+
+			// 循环引用保护：如果迭代次数超过合理范围，记录警告并终止
+			if (iterationCount > maxIterations) {
+				console.warn(`[ApiGeneration] 类型收集迭代次数过多 (${iterationCount}), 可能存在复杂的循环引用`);
+				console.warn(`[ApiGeneration] 剩余待处理类型:`, typesToProcess.slice(0, 10));
+				break;
+			}
+
 			const currentType = typesToProcess.shift()!;
 			const typeDef = typesPool.get(currentType);
 
@@ -1027,14 +1121,20 @@ export class ApiGenerationService {
 				if (operation.responses) {
 					// 获取成功的响应
 					const successResponse = this.getSuccessResponse(operation.responses);
+
 					if (successResponse && successResponse.schema) {
-						if (successResponse.schema.$ref) {
-							responseSchema = this.extractTypeNameFromRef(
-								successResponse.schema.$ref
-							);
-							const types = this.extractTypesFromRef(
-								successResponse.schema.$ref
-							);
+						const schema = successResponse.schema;
+						// 1. 直接引用类型（对象响应）
+						if (schema.$ref) {
+							responseSchema = this.extractTypeNameFromRef(schema.$ref);
+							const types = this.extractTypesFromRef(schema.$ref);
+							types.forEach((t) => outputTypes.add(t));
+						}
+						// 2. 数组类型（OpenAPI 3.x）
+						else if (schema.type === 'array' && schema.items && schema.items.$ref) {
+							const itemType = this.extractTypeNameFromRef(schema.items.$ref);
+							responseSchema = `${itemType}[]`;
+							const types = this.extractTypesFromRef(schema.items.$ref);
 							types.forEach((t) => outputTypes.add(t));
 						}
 					}
@@ -1230,6 +1330,9 @@ export class ApiGenerationService {
 			});
 		}
 
+		// 用于跟踪已使用的方法名，确保 types.ts 和 apis.ts 的方法名一致
+		const existingMethodNames = new Set<string>();
+
 		// 按 controller 分组（使用 mergedApiData）
 		const sortedControllers = Object.keys(mergedApiData).sort((a, b) =>
 			a.localeCompare(b, "zh-CN")
@@ -1272,8 +1375,8 @@ export class ApiGenerationService {
 					continue;
 				}
 
-				// 生成方法签名
-				const methodName = this.toMethodName(api);
+				// 生成方法签名（传递 existingMethodNames 确保与 apis.ts 一致）
+				const methodName = this.toMethodName(api, existingMethodNames);
 				const methodLines = this.generateControllerMethod(
 					methodName,
 					apiDef,
@@ -1864,18 +1967,25 @@ export class ApiGenerationService {
 	 * 解析响应类型（出参）
 	 */
 	private static resolveResponseType(spec: any, api: any): string {
-		const op =
-			spec && spec.paths && spec.paths[api.path]
-				? spec.paths[api.path][String(api.method).toLowerCase()]
-				: null;
+		const pathMethods = spec && spec.paths && spec.paths[api.path];
+		if (!pathMethods) {
+			return "any";
+		}
 
-		if (!op) return "any";
+		const method = String(api.method).toLowerCase();
+		const op = pathMethods[method];
+
+		if (!op) {
+			return "any";
+		}
 
 		const responses = op.responses || {};
 		const ok = this.getSuccessResponse(responses);
 		const schema = ok && ok.schema ? ok.schema : null;
 
-		if (!schema) return "void";
+		if (!schema) {
+			return "void";
+		}
 
 		return this.tsTypeFromSchema(schema);
 	}

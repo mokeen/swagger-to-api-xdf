@@ -79,6 +79,9 @@ export class SpecAdapter {
 		// 规范化 tags
 		normalized.tags = this.normalizeTags(spec);
 
+		// 同步修改 paths 中 operation 的 tags（添加 Controller 后缀）
+		this.normalizeOperationTags(normalized.paths);
+
 		return normalized;
 	}
 
@@ -146,6 +149,8 @@ export class SpecAdapter {
 			if (bodyParam) {
 				normalized.parameters.push(bodyParam);
 			}
+			// 删除 requestBody 字段，避免重复处理
+			delete normalized.requestBody;
 		}
 
 		// 转换 responses
@@ -189,7 +194,12 @@ export class SpecAdapter {
 			if (response.content) {
 				const content = response.content['application/json'] || response.content['*/*'] || Object.values(response.content)[0];
 				if (content && content.schema) {
-					normalized[code].schema = this.normalizeSchema(content.schema);
+					// 忽略空对象 schema（OpenAPI 3.x 中空对象表示无类型定义）
+					const isEmptySchema = Object.keys(content.schema).length === 0;
+					if (!isEmptySchema) {
+						const normalizedSchema = this.normalizeSchema(content.schema);
+						normalized[code].schema = normalizedSchema;
+					}
 				}
 			}
 		}
@@ -266,24 +276,41 @@ export class SpecAdapter {
 
 	/**
 	 * 规范化 tags（统一处理 Swagger 2.0 和 OpenAPI 3.x 的 tags）
-	 * 
+	 *
 	 * 规则：
 	 * 1. 优先使用顶层 tags 定义
 	 * 2. 从 paths 中收集实际使用的 tags
 	 * 3. 为没有 tag 的 path 创建 default tag
 	 * 4. tag 的 description 默认使用 name
+	 * 5. OpenAPI 3.x 的 tag name 统一添加 Controller 后缀（避免重复添加）
 	 */
 	private static normalizeTags(spec: any): any[] {
 		const tagMap = new Map<string, any>();
 		const DEFAULT_TAG = 'default';
+		const version = this.detectVersion(spec);
+		const isOpenAPI3 = version === '3.x';
+
+		// 辅助函数：为 OpenAPI 3.x 的 tag 添加 Controller 后缀（避免重复）
+		const normalizeTagName = (tagName: string): string => {
+			if (!isOpenAPI3) {
+				// Swagger 2.0 保持原样
+				return tagName;
+			}
+			// OpenAPI 3.x：添加 Controller 后缀（避免重复）
+			if (tagName.endsWith('Controller') || tagName.endsWith('controller')) {
+				return tagName;
+			}
+			return tagName + 'Controller';
+		};
 
 		// 1️⃣ 处理顶层 tags 定义
 		if (spec.tags && Array.isArray(spec.tags)) {
 			spec.tags.forEach((tag: any) => {
 				if (tag.name) {
-					tagMap.set(tag.name, {
-						name: tag.name,
-						description: tag.description || tag.name
+					const normalizedName = normalizeTagName(tag.name);
+					tagMap.set(normalizedName, {
+						name: normalizedName,
+						description: tag.description || normalizedName
 					});
 				}
 			});
@@ -299,19 +326,21 @@ export class SpecAdapter {
 							if (operation.tags && Array.isArray(operation.tags)) {
 								// 有 tags：添加到 tagMap
 								operation.tags.forEach((tagName: string) => {
-									if (!tagMap.has(tagName)) {
-										tagMap.set(tagName, {
-											name: tagName,
-											description: tagName
+									const normalizedName = normalizeTagName(tagName);
+									if (!tagMap.has(normalizedName)) {
+										tagMap.set(normalizedName, {
+											name: normalizedName,
+											description: normalizedName
 										});
 									}
 								});
 							} else {
 								// 没有 tags：归属于 default
-								if (!tagMap.has(DEFAULT_TAG)) {
-									tagMap.set(DEFAULT_TAG, {
-										name: DEFAULT_TAG,
-										description: DEFAULT_TAG
+								const normalizedDefault = normalizeTagName(DEFAULT_TAG);
+								if (!tagMap.has(normalizedDefault)) {
+									tagMap.set(normalizedDefault, {
+										name: normalizedDefault,
+										description: normalizedDefault
 									});
 								}
 							}
@@ -323,14 +352,45 @@ export class SpecAdapter {
 
 		// 3️⃣ 确保至少有一个 default tag（如果没有任何 tags）
 		if (tagMap.size === 0) {
-			tagMap.set(DEFAULT_TAG, {
-				name: DEFAULT_TAG,
-				description: DEFAULT_TAG
+			const normalizedDefault = normalizeTagName(DEFAULT_TAG);
+			tagMap.set(normalizedDefault, {
+				name: normalizedDefault,
+				description: normalizedDefault
 			});
 		}
 
 		// 4️⃣ 转换为数组并返回
 		return Array.from(tagMap.values());
+	}
+
+	/**
+	 * 为 paths 中 operation 的 tags 添加 Controller 后缀（仅 OpenAPI 3.x）
+	 * 确保 paths 中的 tags 与规范化后的 tags 列表一致
+	 */
+	private static normalizeOperationTags(paths: any): void {
+		if (!paths) return;
+
+		Object.values<any>(paths).forEach((pathItem: any) => {
+			if (pathItem && typeof pathItem === 'object') {
+				['get', 'post', 'put', 'delete', 'patch', 'options', 'head'].forEach((method: string) => {
+					const operation = pathItem[method];
+					if (operation) {
+						if (operation.tags && Array.isArray(operation.tags) && operation.tags.length > 0) {
+							// 已有 tags：为每个 tag 添加 Controller 后缀（避免重复）
+							operation.tags = operation.tags.map((tag: string) => {
+								if (tag.endsWith('Controller') || tag.endsWith('controller')) {
+									return tag;
+								}
+								return tag + 'Controller';
+							});
+						} else {
+							// 没有 tags 或 tags 为空：分配到 defaultController
+							operation.tags = ['defaultController'];
+						}
+					}
+				});
+			}
+		});
 	}
 
 	/**

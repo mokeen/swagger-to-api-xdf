@@ -1317,31 +1317,30 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 			window.addEventListener('message', event => {
 				const message = event.data;
 				switch (message.command) {
-				case 'existingApisResponse':
-					existingApiData = message.existingApiData || {};
-					markExistingApis();
-					break;
-				case 'updateSwaggerContent':
-					try {
-						// 解析更新后的完整内容
-						const updatedData = JSON.parse(message.content);
-						basicContent = updatedData.basicInfo;
-						swaggerJsonData = updatedData.swaggerJson;
-						// 传入 true 参数，表示使用已更新的全局变量而不是模板变量
-						initSwaggerPreview(true);
-						// 重新请求已存在的API列表
-						vscode.postMessage({
-							command: 'getExistingApis'
-						});
-						toastBody.innerHTML = '文档更新成功！';
-						toast.show();
-					} catch (error) {
-						console.error('解析更新内容失败:', error);
-						toastBody.innerHTML = '文档更新失败：数据格式错误';
-						toast.show();
-					}
-					resetButtonState(refreshBtn, 'refresh');
-					break;
+					case 'existingApisResponse':
+						existingApiData = message.existingApiData || {};
+						markExistingApis();
+						break;
+					case 'updateSwaggerContent':
+						try {
+							// 解析更新后的完整内容
+							const updatedData = JSON.parse(message.content);
+							basicContent = updatedData.basicInfo;
+							swaggerJsonData = updatedData.swaggerJson;
+							// 传入 true 参数，表示使用已更新的全局变量而不是模板变量
+							initSwaggerPreview(true);
+							// 重新请求已存在的API列表
+							vscode.postMessage({
+								command: 'getExistingApis'
+							});
+							toastBody.innerHTML = '文档更新成功！';
+							toast.show();
+						} catch (error) {
+							toastBody.innerHTML = '文档更新失败：数据格式错误';
+							toast.show();
+						}
+						resetButtonState(refreshBtn, 'refresh');
+						break;
 					case 'refreshSwaggerDocFailed':
 						toastBody.innerHTML = '文档更新失败！';
 						toast.show();
@@ -1394,12 +1393,12 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 				const expandedAccordions = document.querySelectorAll('.accordion-collapse.show .accordion-body[data-tag]');
 
 				expandedAccordions.forEach(accordionBody => {
-					const tagName = accordionBody.getAttribute('data-tag');
-					const normalizedTagName = normalizeControllerName(tagName);
+				const tagName = accordionBody.getAttribute('data-tag');
+				const normalizedTagName = normalizeControllerName(tagName);
 
-					// 查找匹配的控制器数据
-					Object.entries(existingApiData).forEach(([controllerName, apis]) => {
-						if (normalizedTagName === controllerName) {
+				// 查找匹配的控制器数据
+				Object.entries(existingApiData).forEach(([controllerName, apis]) => {
+					if (normalizedTagName === controllerName) {
 							markApiItemsInController(accordionBody, apis);
 						}
 					});
