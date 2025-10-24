@@ -48,6 +48,12 @@ export const addSwaggerTemplate = `<!DOCTYPE html>
 				</div>
 
 				<div class="mb-3">
+					<label for="basePath" class="form-label">Base Path (可选)</label>
+					<input type="text" class="form-control" id="basePath" placeholder="/api/v1" />
+					<div class="form-text">此路径将添加到所有接口前缀，测试链接后自动填充</div>
+				</div>
+
+				<div class="mb-3">
 					<label for="swaggerDesc" class="form-label">文档描述 (可选)</label>
 					<textarea class="form-control" id="swaggerDesc" rows="2" placeholder="请输入描述信息..."></textarea>
 				</div>
@@ -106,6 +112,7 @@ export const addSwaggerTemplate = `<!DOCTYPE html>
 			elements.form = document.getElementById("swaggerForm");
 			elements.urlInput = document.getElementById("swaggerUrl");
 			elements.nameInput = document.getElementById("swaggerName");
+			elements.basePathInput = document.getElementById("basePath");
 			elements.descInput = document.getElementById("swaggerDesc");
 			elements.testBtn = document.getElementById("testUrlBtn");
 			elements.submitBtn = elements.form.querySelector('button[type="submit"]');
@@ -196,7 +203,8 @@ export const addSwaggerTemplate = `<!DOCTYPE html>
 				command: "addSwagger",
 				url: elements.urlInput.value.trim(),
 				name: elements.nameInput.value.trim(),
-				desc: elements.descInput.value.trim() || ""
+				basePath: elements.basePathInput.value.trim() || "",
+				desc: elements.descInput.value.trim() || "",
 			};
 
 			vscode.postMessage(formData);
@@ -372,6 +380,11 @@ export const addSwaggerTemplate = `<!DOCTYPE html>
 					if (!elements.nameInput.value.trim() && result.info.title) {
 						elements.nameInput.value = result.info.title;
 						elements.nameInput.classList.add('is-valid');
+					}
+
+					// 自动填充 basePath（如果为空）
+					if (!elements.basePathInput.value.trim() && result.info.basePath) {
+						elements.basePathInput.value = result.info.basePath;
 					}
 
 					// 自动填充描述（如果为空）

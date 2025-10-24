@@ -3,6 +3,7 @@ import { getWebviewContent } from '../views/previewSwagger';
 import { SwaggerFetcher } from '../services/SwaggerFetcher';
 import { ApiGenerationService } from '../services/ApiGenerationService';
 import { SpecAdapter } from '../services/SpecAdapter';
+import { ContractService } from '../services/ContractService';
 
 export class SwaggerPreviewPanel {
 	private static readonly viewType = 'swaggerPreview';
@@ -99,54 +100,79 @@ export class SwaggerPreviewPanel {
 						});
 					}
 					break;
-			case 'refreshSwaggerDoc':
-				vscode.window.withProgress({
-					location: vscode.ProgressLocation.Notification,
-					title: `正在刷新${basicInfo.name}文档...`,
-					cancellable: false
-				}, async () => {
-					try {
-						// 刷新时破坏缓存，确保获取最新数据
-						const updatedSwaggerJson = await SwaggerFetcher.fetchSwaggerJson(basicInfo.url, true);
-						
-						// 规范化 Swagger/OpenAPI 数据并保存
-						const normalizedSpec = SpecAdapter.normalize(updatedSwaggerJson);
-						// 使用纯规范化的数据，避免与原始格式混合
-						this._normalizedSwaggerJson = {
-							swagger: '2.0',  // 标记为 Swagger 2.0，防止重复规范化
-							info: normalizedSpec.info,  // 使用规范化后的 info，确保格式一致
-							basePath: normalizedSpec.basePath,
-							paths: normalizedSpec.paths,
-							definitions: normalizedSpec.definitions,
-							tags: normalizedSpec.tags
-						};
-						
-						// 构建完整的内容结构，包含 basicInfo 和规范化后的 swaggerJson
-						const updatedContent = JSON.stringify({
-							basicInfo: basicInfo,
-							swaggerJson: this._normalizedSwaggerJson
-						});
-						
-						// 发送更新后的内容到webview
-						this._panel.webview.postMessage({
-							command: 'updateSwaggerContent',
-							content: updatedContent
-						});
-					} catch (error) {
-						vscode.window.showErrorMessage(`更新失败: ${error instanceof Error ? error.message : String(error)}`);
-						this._panel.webview.postMessage({
-							command: 'refreshSwaggerDocFailed',
-						});
+				case 'refreshSwaggerDoc':
+					vscode.window.withProgress({
+						location: vscode.ProgressLocation.Notification,
+						title: `正在刷新${basicInfo.name}文档...`,
+						cancellable: false
+					}, async () => {
+						try {
+							// 刷新时破坏缓存，确保获取最新数据
+							const updatedSwaggerJson = await SwaggerFetcher.fetchSwaggerJson(basicInfo.url, true);
+
+							// 规范化 Swagger/OpenAPI 数据并保存
+							const normalizedSpec = SpecAdapter.normalize(updatedSwaggerJson);
+							// 使用纯规范化的数据，避免与原始格式混合
+							this._normalizedSwaggerJson = {
+								swagger: '2.0',  // 标记为 Swagger 2.0，防止重复规范化
+								info: normalizedSpec.info,  // 使用规范化后的 info，确保格式一致
+								basePath: normalizedSpec.basePath,
+								paths: normalizedSpec.paths,
+								definitions: normalizedSpec.definitions,
+								tags: normalizedSpec.tags
+							};
+
+							// 构建完整的内容结构，包含 basicInfo 和规范化后的 swaggerJson
+							const updatedContent = JSON.stringify({
+								basicInfo: basicInfo,
+								swaggerJson: this._normalizedSwaggerJson
+							});
+
+							// 发送更新后的内容到webview
+							this._panel.webview.postMessage({
+								command: 'updateSwaggerContent',
+								content: updatedContent
+							});
+						} catch (error) {
+							vscode.window.showErrorMessage(`更新失败: ${error instanceof Error ? error.message : String(error)}`);
+							this._panel.webview.postMessage({
+								command: 'refreshSwaggerDocFailed',
+							});
+						}
+					});
+					break;
+				case 'updateBasePath':
+					if (workspaceFolders && workspaceFolders.length > 0) {
+						const workspacePath = workspaceFolders[0].uri.fsPath;
+						try {
+							await ContractService.updateContractBasePath(
+								workspacePath,
+								basicInfo.uid,
+								message.basePath
+							);
+							// 更新本地 basicInfo
+							basicInfo.basePath = message.basePath;
+							vscode.window.showInformationMessage(`✅ Base Path 已更新为: ${message.basePath || '/'}`);
+						} catch (error) {
+							vscode.window.showErrorMessage(
+								`更新 Base Path 失败: ${error instanceof Error ? error.message : String(error)}`
+							);
+						}
 					}
-				});
-				break;
+					break;
 				case 'exportSwaggerDoc':
 					if (workspaceFolders && workspaceFolders.length > 0) {
 						const workspacePath = workspaceFolders[0].uri.fsPath;
 						const selectedApis = message.content;
 
+						// 使用用户编辑的 basePath 覆盖文档中的 basePath（方案A：用户优先）
+						const swaggerJsonWithBasePath = {
+							...this._normalizedSwaggerJson,
+							basePath: basicInfo.basePath || this._normalizedSwaggerJson.basePath || ''
+						};
+
 						// 使用已规范化的数据，避免重复规范化
-						const res = await ApiGenerationService.generateApiFiles(workspacePath, this._context, this._normalizedSwaggerJson, selectedApis);
+						const res = await ApiGenerationService.generateApiFiles(workspacePath, this._context, swaggerJsonWithBasePath, selectedApis);
 						if (res && res.ok) {
 							this._panel.webview.postMessage({ command: 'exportApiSuccess' });
 						} else {

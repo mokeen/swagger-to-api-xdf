@@ -5,12 +5,14 @@ import { v1 as uuidv1 } from 'uuid'
 import { getWebviewContent } from "../views/addSwagger";
 import { ContractService } from "../services/ContractService";
 import { SwaggerFetcher } from "../services/SwaggerFetcher";
+import { SpecAdapter } from "../services/SpecAdapter";
 
 interface AddSwaggerMessage {
 	command: 'addSwagger';
 	url: string;
 	name: string;
 	desc: string;
+	basePath: string;
 }
 
 interface TestUrlMessage {
@@ -122,6 +124,7 @@ export class AddSwaggerPanel {
 				name: message.name.trim(),
 				url: message.url.trim(),
 				desc: message.desc?.trim() || "",
+				basePath: message.basePath?.trim() || "",
 				uid: uuidv1(),
 			});
 
@@ -150,6 +153,9 @@ export class AddSwaggerPanel {
 			// 使用 SwaggerFetcher 获取 Swagger JSON
 			const swaggerJson = await SwaggerFetcher.fetchSwaggerJson(message.url);
 			
+			// 规范化 Swagger/OpenAPI 数据以提取 basePath
+			const normalizedSpec = SpecAdapter.normalize(swaggerJson);
+			
 			// 提取 info 信息用于自动填充
 			const info = swaggerJson?.info || {};
 			
@@ -160,7 +166,8 @@ export class AddSwaggerPanel {
 				info: {
 					title: info.title || '',
 					description: info.description || '',
-					version: info.version || ''
+					version: info.version || '',
+					basePath: normalizedSpec.basePath || ''
 				}
 			});
 		} catch (error) {

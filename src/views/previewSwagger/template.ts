@@ -657,11 +657,85 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 							<a href="\${content.url}" target="_blank">\${content.url}</a>
 						</div>
 					</div>
+					<div class="row mb-2">
+						<div class="col-md-2 fw-bold">Base Path：</div>
+						<div class="col-md-10">
+							<div id="basePath-display" class="d-flex align-items-center gap-2">
+								<span id="basePath-value" class="text-primary">\${content.basePath || '/'}</span>
+								<button id="basePath-edit-btn" class="btn btn-sm btn-outline-primary" style="padding: 0.1rem 0.5rem; font-size: 0.85rem;">
+									<i class="bi bi-pencil"></i> 编辑
+								</button>
+							</div>
+							<div id="basePath-edit" class="d-none">
+								<div class="d-flex align-items-center gap-2">
+									<input type="text" id="basePath-input" class="form-control form-control-sm" value="\${content.basePath || '/'}" placeholder="/api/v1" style="max-width: 300px;" />
+									<button id="basePath-confirm-btn" class="btn btn-sm btn-success">
+										<i class="bi bi-check-lg"></i> 确认
+									</button>
+									<button id="basePath-cancel-btn" class="btn btn-sm btn-secondary">
+										<i class="bi bi-x-lg"></i> 取消
+									</button>
+								</div>
+								<div class="form-text">此路径将添加到所有接口前缀</div>
+							</div>
+						</div>
+					</div>
 					<div class="row">
 						<div class="col-md-2 fw-bold">文档描述：</div>
 						<div class="col-md-10 text-muted">\${content.desc || "暂无描述"}</div>
 					</div>
 				\`;
+
+				// 绑定 basePath 编辑事件
+				setupBasePathEdit(content);
+			}
+
+			function setupBasePathEdit(content) {
+				const basePathEditBtn = document.getElementById('basePath-edit-btn');
+				const basePathConfirmBtn = document.getElementById('basePath-confirm-btn');
+				const basePathCancelBtn = document.getElementById('basePath-cancel-btn');
+				const basePathInput = document.getElementById('basePath-input');
+				const basePathDisplay = document.getElementById('basePath-display');
+				const basePathEdit = document.getElementById('basePath-edit');
+				const basePathValue = document.getElementById('basePath-value');
+
+				if (!basePathEditBtn || !basePathConfirmBtn || !basePathCancelBtn) {
+					return;
+				}
+
+				let originalValue = content.basePath || '/';
+
+				basePathEditBtn.addEventListener('click', () => {
+					originalValue = content.basePath || '/';
+					basePathInput.value = originalValue;
+					basePathDisplay.classList.add('d-none');
+					basePathEdit.classList.remove('d-none');
+					basePathInput.focus();
+				});
+
+				basePathConfirmBtn.addEventListener('click', () => {
+					const newPath = basePathInput.value.trim() || '/';
+					if (newPath !== originalValue) {
+						// 更新显示
+						content.basePath = newPath;
+						basePathValue.textContent = newPath;
+
+						// 发送更新消息到后端
+						vscode.postMessage({
+							command: 'updateBasePath',
+							basePath: newPath
+						});
+					}
+					basePathDisplay.classList.remove('d-none');
+					basePathEdit.classList.add('d-none');
+				});
+
+				basePathCancelBtn.addEventListener('click', () => {
+					// 恢复原值
+					basePathInput.value = originalValue;
+					basePathDisplay.classList.remove('d-none');
+					basePathEdit.classList.add('d-none');
+				});
 			}
 
 			function renderControllerList(tags) {
