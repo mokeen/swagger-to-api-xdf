@@ -47,16 +47,8 @@ export class SwaggerPreviewPanel {
 		this.docId = basicInfo.uid;
 
 		// 规范化 Swagger/OpenAPI 数据（统一为 Swagger 2.0 格式）
-		const normalizedSpec = SpecAdapter.normalize(swaggerJson);
-		// 使用纯规范化的数据，避免与原始格式混合
-		this._normalizedSwaggerJson = {
-			swagger: '2.0',  // 标记为 Swagger 2.0，防止重复规范化
-			info: normalizedSpec.info,  // 使用规范化后的 info，确保格式一致
-			basePath: normalizedSpec.basePath,
-			paths: normalizedSpec.paths,
-			definitions: normalizedSpec.definitions,
-			tags: normalizedSpec.tags
-		};
+		// normalize() 返回的数据已包含 _normalized 标记，避免重复规范化
+		this._normalizedSwaggerJson = SpecAdapter.normalize(swaggerJson);
 
 		// 重新构建规范化后的 content
 		const normalizedContent = JSON.stringify({
@@ -107,20 +99,12 @@ export class SwaggerPreviewPanel {
 						cancellable: false
 					}, async () => {
 						try {
-							// 刷新时破坏缓存，确保获取最新数据
-							const updatedSwaggerJson = await SwaggerFetcher.fetchSwaggerJson(basicInfo.url, true);
+						// 刷新时破坏缓存，确保获取最新数据
+						const updatedSwaggerJson = await SwaggerFetcher.fetchSwaggerJson(basicInfo.url, true);
 
-							// 规范化 Swagger/OpenAPI 数据并保存
-							const normalizedSpec = SpecAdapter.normalize(updatedSwaggerJson);
-							// 使用纯规范化的数据，避免与原始格式混合
-							this._normalizedSwaggerJson = {
-								swagger: '2.0',  // 标记为 Swagger 2.0，防止重复规范化
-								info: normalizedSpec.info,  // 使用规范化后的 info，确保格式一致
-								basePath: normalizedSpec.basePath,
-								paths: normalizedSpec.paths,
-								definitions: normalizedSpec.definitions,
-								tags: normalizedSpec.tags
-							};
+						// 规范化 Swagger/OpenAPI 数据并保存
+						// normalize() 返回的数据已包含 _normalized 标记，避免重复规范化
+						this._normalizedSwaggerJson = SpecAdapter.normalize(updatedSwaggerJson);
 
 							// 构建完整的内容结构，包含 basicInfo 和规范化后的 swaggerJson
 							const updatedContent = JSON.stringify({

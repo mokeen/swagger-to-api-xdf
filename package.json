@@ -2,7 +2,7 @@
   "name": "va-swagger-to-api",
   "publisher": "xdf-va",
   "displayName": "Va Swagger to API (Vue2/Vue3)",
-  "description": "Generate TypeScript API client code from Swagger/OpenAPI v2 documentation with intelligent type system and incremental updates support. Works with Vue 2, Vue 3, and any TypeScript + Axios project.",
+  "description": "Generate TypeScript API client code from Swagger 2.0 / OpenAPI 3.x documentation with intelligent type system and incremental updates support. Works with Vue 2, Vue 3, FastAPI, Spring Boot, and any TypeScript + Axios project.",
   "version": "3.0.0",
   "author": "xdf-va",
   "license": "ICT",

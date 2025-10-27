@@ -4,6 +4,7 @@
  */
 
 export interface NormalizedSpec {
+	_normalized: true; // 标记已规范化，避免重复处理
 	version: '2.0' | '3.x';
 	info: any;
 	basePath?: string;
@@ -28,8 +29,15 @@ export class SpecAdapter {
 
 	/**
 	 * 规范化 spec，统一转换为内部格式
+	 *
+	 * 性能优化：如果数据已经规范化（带有 _normalized 标记），直接返回，避免重复处理
 	 */
 	static normalize(spec: any): NormalizedSpec {
+		// 快速检查：如果已经规范化，直接返回
+		if (spec._normalized === true) {
+			return spec as NormalizedSpec;
+		}
+
 		const version = this.detectVersion(spec);
 
 		if (version === '2.0') {
@@ -46,6 +54,7 @@ export class SpecAdapter {
 	 */
 	private static normalizeSwagger2(spec: any): NormalizedSpec {
 		return {
+			_normalized: true, // 标记已规范化
 			version: '2.0',
 			info: spec.info || {},
 			basePath: spec.basePath || '',
@@ -60,6 +69,7 @@ export class SpecAdapter {
 	 */
 	private static normalizeOpenAPI3(spec: any): NormalizedSpec {
 		const normalized: NormalizedSpec = {
+			_normalized: true, // 标记已规范化
 			version: '3.x',
 			info: spec.info || {},
 			basePath: this.extractBasePath(spec),
