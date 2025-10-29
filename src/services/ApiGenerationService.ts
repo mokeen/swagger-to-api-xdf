@@ -336,9 +336,9 @@ export class ApiGenerationService {
 			// 规范化 spec（统一 Swagger 2.0 和 OpenAPI 3.x）
 			const normalizedSpec = SpecAdapter.normalize(swaggerJson);
 
-			// 获取原始名称（优先使用 description，其次使用 title）
+			// 获取原始名称（优先使用 title，其次使用 description）
 			const rawName = normalizedSpec.info
-				? (normalizedSpec.info.description || normalizedSpec.info.title)
+				? (normalizedSpec.info.title || normalizedSpec.info.description)
 				: undefined;
 
 			// 使用统一的方法生成文件夹名（PascalCase）
