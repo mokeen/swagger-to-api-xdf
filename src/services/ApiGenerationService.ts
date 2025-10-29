@@ -1650,9 +1650,18 @@ export class ApiGenerationService {
 				respType = this.ensureGenericTypesForApis(respType, genericTypeNames);
 				const pathExpr = "${basePath}" + String(api.path);
 
+				// 从 spec.paths 中重新提取参数信息（解决增量更新时参数丢失的问题）
+				let parameters = api.parameters || [];
+				if (spec.paths && spec.paths[api.path] && spec.paths[api.path][api.method.toLowerCase()]) {
+					const operation = spec.paths[api.path][api.method.toLowerCase()];
+					if (operation.parameters) {
+						parameters = operation.parameters;
+					}
+				}
+
 				// 分类参数
 				const { bodyParam, bodyParams, queryParams, pathParams } =
-					this.classifyParameters(api.parameters || []);
+					this.classifyParameters(parameters);
 				const hasUrlParams = queryParams.length > 0 || pathParams.length > 0;
 				const hasMultiBodyParams = bodyParams.length > 1;
 
