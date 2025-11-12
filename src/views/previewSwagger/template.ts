@@ -1384,6 +1384,21 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 						</code>
 					\`;
 				}
+
+				// 处理数组类型
+				if (schema.type === 'array' && schema.items) {
+					if (schema.items.$ref) {
+						const refKey = schema.items.$ref.replace('#/definitions/', '');
+						return \`
+							<code class="\${isRequest ? 'request-dto-toggle' : 'dto-toggle'} text-primary" data-ref="\${refKey}">
+								\${refKey}[]
+							</code>
+						\`;
+					}
+					// 基本类型数组
+					return \`<span class="text-muted">Array&lt;\${schema.items.type || 'any'}&gt;</span>\`;
+				}
+
 				return schema.type || (schema.enum ? \`enum: \${schema.enum.join('|')}\` : 'any');
 			}
 
