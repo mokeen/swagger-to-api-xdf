@@ -214,6 +214,9 @@ export class AddSwaggerPanel {
 			vscode.ViewColumn.One,
 			{
 				enableScripts: true,
+				localResourceRoots: [
+					vscode.Uri.joinPath(context.extensionUri, 'resources'),
+				],
 				retainContextWhenHidden: true  // 保持webview状态，切换时不刷新
 			}
 		);

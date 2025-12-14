@@ -19,6 +19,10 @@ export class SwaggerPreviewPanel {
 	public static show(context: vscode.ExtensionContext, content: string) {
 		const { basicInfo } = JSON.parse(content);
 		const { uid, name } = basicInfo;
+		if (!uid) {
+			vscode.window.showWarningMessage('当前文档缺少 uid（旧版 .contractrc）。请先修复配置后再预览。');
+			return;
+		}
 
 		// 如果已经存在该文档的预览，则直接显示
 		for (const panel of SwaggerPreviewPanel.panels) {

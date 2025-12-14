@@ -43,13 +43,19 @@ export class SwaggerListProvider implements vscode.TreeDataProvider<vscode.TreeI
 		const item = new vscode.TreeItem(contract.name);
 		item.tooltip = new vscode.MarkdownString([
 			`**URL**: ${contract.url}`,
-			`**描述**: ${contract.desc || '无'}`
+			`**描述**: ${contract.desc || '无'}`,
+			contract.uid ? '' : '**⚠️ 提示**: 当前 .contractrc 为旧版本，此条文档缺少 uid，建议先修复后再操作'
 		].join('\n\n'));
 
-		item.id = contract.uid;
-
-		// 设置正确的上下文值和删除命令
-		item.contextValue = 'swaggerDoc';
+		if (contract.uid) {
+			item.id = contract.uid;
+			item.contextValue = 'swaggerDoc';
+		} else {
+			item.id = contract.name;
+			item.contextValue = 'swaggerDocLegacy';
+			item.iconPath = new vscode.ThemeIcon('warning');
+			return item;
+		}
 
 		// 使用相对路径加载图标 (假设图标放在resources目录)
 		item.iconPath = new vscode.ThemeIcon("repo");

@@ -16,5 +16,14 @@
 			"@views/*": ["views/*"],
 			"@model/*": ["model/*"]
 		}
-	}
+	},
+	"include": [
+		"src/**/*.ts"
+	],
+	"exclude": [
+		"node_modules",
+		"out",
+		"resources",
+		"webview-src"
+	]
 }

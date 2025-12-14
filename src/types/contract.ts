@@ -10,5 +10,5 @@ export interface ContractItem {
 	url: string;
 	desc: string;
 	basePath?: string;
-	uid: string;
+	uid?: string;
 }

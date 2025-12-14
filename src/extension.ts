@@ -68,6 +68,16 @@ export function activate(context: vscode.ExtensionContext) {
 				vscode.window.showErrorMessage('未打开工作区');
 				return;
 			}
+			try {
+				await ContractService.ensureUidsOrThrow(workspacePath);
+			} catch (e) {
+				vscode.window.showWarningMessage(e instanceof Error ? e.message : String(e));
+				return;
+			}
+			if (!node.id) {
+				vscode.window.showWarningMessage('当前条目缺少 uid（旧版 .contractrc），请先修复后再删除');
+				return;
+			}
 			const choice = await vscode.window.showWarningMessage(
 				`确定要删除 "${node.label}" 吗？`,
 				{ modal: true },
@@ -95,6 +105,16 @@ export function activate(context: vscode.ExtensionContext) {
 				const config = await ContractService.getConfig(workspacePath);
 				const doc = config.contracts.find(c => c.name === item.label);
 				if (!doc) return;
+				if (!doc.uid) {
+					await ContractService.ensureUidsOrThrow(workspacePath);
+					const fixedConfig = await ContractService.getConfig(workspacePath);
+					const fixedDoc = fixedConfig.contracts.find(c => c.name === item.label);
+					if (!fixedDoc?.uid) {
+						vscode.window.showWarningMessage('该文档缺少 uid（旧版 .contractrc），请先修复后再预览');
+						return;
+					}
+					(doc as any).uid = fixedDoc.uid;
+				}
 
 				await vscode.window.withProgress({
 					location: vscode.ProgressLocation.Notification,
@@ -112,6 +132,24 @@ export function activate(context: vscode.ExtensionContext) {
 				});
 			} catch (err) {
 				vscode.window.showErrorMessage(`获取失败: ${err instanceof Error ? err.message : String(err)}`);
+			}
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('swagger-to-api.fixLegacyUids', async () => {
+			const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+			if (!workspacePath) {
+				vscode.window.showWarningMessage('未打开工作区');
+				return;
+			}
+			try {
+				const changed = await ContractService.fixMissingUids(workspacePath);
+				if (changed) {
+					vscode.commands.executeCommand('swagger-to-api.refresh');
+				}
+			} catch (err) {
+				vscode.window.showErrorMessage(`修复失败: ${err instanceof Error ? err.message : String(err)}`);
 			}
 		})
 	);

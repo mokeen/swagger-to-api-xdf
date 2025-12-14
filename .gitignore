@@ -3,3 +3,13 @@ dist
 node_modules
 .vscode-test/
 *.vsix
+
+# webview source should not contain build artifacts
+webview-src/**/*.js
+webview-src/**/*.js.map
+webview-src/**/*.map
+
+# webview build output (generated at publish time)
+resources/webview/**/*.js
+resources/webview/**/*.js.map
+resources/webview/**/*.map

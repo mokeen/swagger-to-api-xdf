@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="UTF-8" />
+		<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src <%= cspSource %> https: data:; style-src <%= cspSource %> 'unsafe-inline'; font-src <%= cspSource %> data:; script-src 'nonce-<%= nonce %>';" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Add Swagger Document</title>
+		<link href="<%= bootstrapCssUri %>" rel="stylesheet" />
+		<link rel="stylesheet" href="<%= bootstrapIconsUri %>" />
+		<link rel="stylesheet" href="<%= addSwaggerCssUri %>" />
+	</head>
+
+	<body>
+		<div class="form-container">
+			<h2 class="text-center mb-4">添加Swagger文档</h2>
+			<h6 class="text-center mb-4">向当前项目中新增一个swagger服务文档并同步至项目 <strong>.contractrc</strong> 文件</h6>
+			<form id="swaggerForm">
+				<div class="mb-3">
+					<label for="swaggerUrl" class="form-label">Swagger URL</label>
+					<div class="input-group">
+						<input type="url" class="form-control" id="swaggerUrl" placeholder="https://example.com/swagger" required />
+						<button class="btn btn-outline-secondary clear-btn" type="button" data-clear-target="swaggerUrl" aria-label="Clear">
+							<i class="bi bi-x-lg"></i>
+						</button>
+					</div>
+					<div class="invalid-feedback">请输入有效的URL地址</div>
+				</div>
+
+				<div class="mb-3">
+					<label for="swaggerName" class="form-label">文档名称</label>
+					<div class="input-group">
+						<input type="text" class="form-control" id="swaggerName" placeholder="My API" required />
+						<button class="btn btn-outline-secondary clear-btn" type="button" data-clear-target="swaggerName" aria-label="Clear">
+							<i class="bi bi-x-lg"></i>
+						</button>
+					</div>
+					<div class="invalid-feedback">请输入文档名称</div>
+				</div>
+
+				<div class="mb-3">
+					<label for="basePath" class="form-label">Base Path (可选)</label>
+					<div class="input-group">
+						<input type="text" class="form-control" id="basePath" placeholder="/api/v1" />
+						<button class="btn btn-outline-secondary clear-btn" type="button" data-clear-target="basePath" aria-label="Clear">
+							<i class="bi bi-x-lg"></i>
+						</button>
+					</div>
+					<div class="form-text">此路径将添加到所有接口前缀，测试链接后自动填充</div>
+				</div>
+
+				<div class="mb-3">
+					<label for="swaggerDesc" class="form-label">文档描述 (可选)</label>
+					<textarea class="form-control" id="swaggerDesc" rows="2" placeholder="请输入描述信息..."></textarea>
+				</div>
+
+				<div class="d-flex gap-2 mt-4">
+					<button type="button" id="testUrlBtn" class="btn btn-outline-primary flex-grow-1">
+						<i class="bi bi-link-45deg"></i> 测试链接
+					</button>
+
+					<button type="submit" class="btn btn-primary flex-grow-1">
+						添加文档
+					</button>
+				</div>
+			</form>
+		</div>
+
+		<script nonce="<%= nonce %>" src="<%= bootstrapJsUri %>"></script>
+		<script nonce="<%= nonce %>" src="<%= addSwaggerJsUri %>"></script>
+	</body>
+</html>
