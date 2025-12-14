@@ -523,13 +523,13 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 
 			exportBtn.addEventListener('click', handleExportDoc);
 
-		// 文档信息展开/收起功能
-		const toggleInfoBtn = document.getElementById('toggle-info-btn');
-		const basicInfoCard = document.getElementById('basic-info-card');
+			// 文档信息展开/收起功能
+			const toggleInfoBtn = document.getElementById('toggle-info-btn');
+			const basicInfoCard = document.getElementById('basic-info-card');
 
-		toggleInfoBtn.addEventListener('click', function() {
-			basicInfoCard.classList.toggle('collapsed');
-		});
+			toggleInfoBtn.addEventListener('click', function() {
+				basicInfoCard.classList.toggle('collapsed');
+			});
 
 			async function handleRefreshDoc() {
 				const btn = this;
@@ -622,9 +622,10 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 						command: 'getExistingApis'
 					});
 
-					// 3. 渲染Controller列表
-					if (swaggerJsonData.tags && swaggerJsonData.tags.length) {
-						renderControllerList(swaggerJsonData.tags);
+					// 3. 渲染Controller列表（直接使用规范化的 tags）
+					const tags = swaggerJsonData.tags || [];
+					if (tags && tags.length) {
+						renderControllerList(tags);
 					} else {
 						interfaceContainer.innerHTML = \`
 							<div class="alert alert-info">
@@ -656,11 +657,85 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 							<a href="\${content.url}" target="_blank">\${content.url}</a>
 						</div>
 					</div>
+					<div class="row mb-2">
+						<div class="col-md-2 fw-bold">Base Path：</div>
+						<div class="col-md-10">
+							<div id="basePath-display" class="d-flex align-items-center gap-2">
+								<span id="basePath-value" class="text-primary">\${content.basePath || '/'}</span>
+								<button id="basePath-edit-btn" class="btn btn-sm btn-outline-primary" style="padding: 0.1rem 0.5rem; font-size: 0.85rem;">
+									<i class="bi bi-pencil"></i> 编辑
+								</button>
+							</div>
+							<div id="basePath-edit" class="d-none">
+								<div class="d-flex align-items-center gap-2">
+									<input type="text" id="basePath-input" class="form-control form-control-sm" value="\${content.basePath || '/'}" placeholder="/api/v1" style="max-width: 300px;" />
+									<button id="basePath-confirm-btn" class="btn btn-sm btn-success">
+										<i class="bi bi-check-lg"></i> 确认
+									</button>
+									<button id="basePath-cancel-btn" class="btn btn-sm btn-secondary">
+										<i class="bi bi-x-lg"></i> 取消
+									</button>
+								</div>
+								<div class="form-text">此路径将添加到所有接口前缀</div>
+							</div>
+						</div>
+					</div>
 					<div class="row">
 						<div class="col-md-2 fw-bold">文档描述：</div>
 						<div class="col-md-10 text-muted">\${content.desc || "暂无描述"}</div>
 					</div>
 				\`;
+
+				// 绑定 basePath 编辑事件
+				setupBasePathEdit(content);
+			}
+
+			function setupBasePathEdit(content) {
+				const basePathEditBtn = document.getElementById('basePath-edit-btn');
+				const basePathConfirmBtn = document.getElementById('basePath-confirm-btn');
+				const basePathCancelBtn = document.getElementById('basePath-cancel-btn');
+				const basePathInput = document.getElementById('basePath-input');
+				const basePathDisplay = document.getElementById('basePath-display');
+				const basePathEdit = document.getElementById('basePath-edit');
+				const basePathValue = document.getElementById('basePath-value');
+
+				if (!basePathEditBtn || !basePathConfirmBtn || !basePathCancelBtn) {
+					return;
+				}
+
+				let originalValue = content.basePath || '/';
+
+				basePathEditBtn.addEventListener('click', () => {
+					originalValue = content.basePath || '/';
+					basePathInput.value = originalValue;
+					basePathDisplay.classList.add('d-none');
+					basePathEdit.classList.remove('d-none');
+					basePathInput.focus();
+				});
+
+				basePathConfirmBtn.addEventListener('click', () => {
+					const newPath = basePathInput.value.trim() || '/';
+					if (newPath !== originalValue) {
+						// 更新显示
+						content.basePath = newPath;
+						basePathValue.textContent = newPath;
+
+						// 发送更新消息到后端
+						vscode.postMessage({
+							command: 'updateBasePath',
+							basePath: newPath
+						});
+					}
+					basePathDisplay.classList.remove('d-none');
+					basePathEdit.classList.add('d-none');
+				});
+
+				basePathCancelBtn.addEventListener('click', () => {
+					// 恢复原值
+					basePathInput.value = originalValue;
+					basePathDisplay.classList.remove('d-none');
+					basePathEdit.classList.add('d-none');
+				});
 			}
 
 			function renderControllerList(tags) {
@@ -794,7 +869,14 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 				const apiList = Object.entries(swaggerJsonData.paths)
 					.flatMap(([path, methods]) =>
 						Object.entries(methods)
-							.filter(([_, methodObj]) => methodObj.tags && methodObj.tags.includes(tagName))
+							.filter(([_, methodObj]) => {
+								// 如果是 default tag，匹配没有 tags 的接口
+								if (tagName === 'default') {
+									return !methodObj.tags || methodObj.tags.length === 0;
+								}
+								// 其他 tag，正常匹配
+								return methodObj.tags && methodObj.tags.includes(tagName);
+							})
 							.map(([method, methodObj]) => ({
 								path,
 								method,
@@ -1160,17 +1242,54 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 
 			// 递归渲染Schema结构
 			function renderSchema(schema) {
+				if (!schema) {
+					return '<span class="text-muted">any</span>';
+				}
+
+				// 处理 $ref
 				if (schema.$ref) {
 					const refKey = schema.$ref.replace('#/definitions/', '');
 					return \`
 						<div class="dto-container">
-							<code class="dto-toggle text-primary">\${refKey}</code>
+							<code class="dto-toggle text-primary" style="cursor:pointer;">\${refKey}</code>
 							<div class="dto-details" style="display:none">
 								\${renderModel(refKey, swaggerJsonData.definitions)}
 							</div>
 						</div>
 					\`;
 				}
+
+				// 处理数组类型
+				if (schema.type === 'array' && schema.items) {
+					// 如果 items 是 $ref，包装成可展开的结构
+					if (schema.items.$ref) {
+						const refKey = schema.items.$ref.replace('#/definitions/', '');
+						return \`
+							<div class="dto-container">
+								<code class="dto-toggle text-primary" style="cursor:pointer;">
+									Array&lt;\${refKey}&gt;
+								</code>
+								<div class="dto-details" style="display:none">
+									\${renderModel(refKey, swaggerJsonData.definitions)}
+								</div>
+							</div>
+						\`;
+					}
+					// 基本类型数组
+					return \`
+						<span class="text-muted">Array&lt;\${schema.items.type || 'any'}&gt;</span>
+					\`;
+				}
+
+				// 处理对象类型
+				if (schema.type === 'object') {
+					if (schema.properties) {
+						return \`<span class="text-muted">object {\${Object.keys(schema.properties).length} properties}</span>\`;
+					}
+					return \`<span class="text-muted">object</span>\`;
+				}
+
+				// 基本类型
 				return \`
 					<div class="ms-2">
 						<span class="text-muted">\${schema.type || 'any'}</span>
@@ -1265,6 +1384,21 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 						</code>
 					\`;
 				}
+
+				// 处理数组类型
+				if (schema.type === 'array' && schema.items) {
+					if (schema.items.$ref) {
+						const refKey = schema.items.$ref.replace('#/definitions/', '');
+						return \`
+							<code class="\${isRequest ? 'request-dto-toggle' : 'dto-toggle'} text-primary" data-ref="\${refKey}">
+								\${refKey}[]
+							</code>
+						\`;
+					}
+					// 基本类型数组
+					return \`<span class="text-muted">Array&lt;\${schema.items.type || 'any'}&gt;</span>\`;
+				}
+
 				return schema.type || (schema.enum ? \`enum: \${schema.enum.join('|')}\` : 'any');
 			}
 
@@ -1272,31 +1406,30 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 			window.addEventListener('message', event => {
 				const message = event.data;
 				switch (message.command) {
-				case 'existingApisResponse':
-					existingApiData = message.existingApiData || {};
-					markExistingApis();
-					break;
-				case 'updateSwaggerContent':
-					try {
-						// 解析更新后的完整内容
-						const updatedData = JSON.parse(message.content);
-						basicContent = updatedData.basicInfo;
-						swaggerJsonData = updatedData.swaggerJson;
-						// 传入 true 参数，表示使用已更新的全局变量而不是模板变量
-						initSwaggerPreview(true);
-						// 重新请求已存在的API列表
-						vscode.postMessage({
-							command: 'getExistingApis'
-						});
-						toastBody.innerHTML = '文档更新成功！';
-						toast.show();
-					} catch (error) {
-						console.error('解析更新内容失败:', error);
-						toastBody.innerHTML = '文档更新失败：数据格式错误';
-						toast.show();
-					}
-					resetButtonState(refreshBtn, 'refresh');
-					break;
+					case 'existingApisResponse':
+						existingApiData = message.existingApiData || {};
+						markExistingApis();
+						break;
+					case 'updateSwaggerContent':
+						try {
+							// 解析更新后的完整内容
+							const updatedData = JSON.parse(message.content);
+							basicContent = updatedData.basicInfo;
+							swaggerJsonData = updatedData.swaggerJson;
+							// 传入 true 参数，表示使用已更新的全局变量而不是模板变量
+							initSwaggerPreview(true);
+							// 重新请求已存在的API列表
+							vscode.postMessage({
+								command: 'getExistingApis'
+							});
+							toastBody.innerHTML = '文档更新成功！';
+							toast.show();
+						} catch (error) {
+							toastBody.innerHTML = '文档更新失败：数据格式错误';
+							toast.show();
+						}
+						resetButtonState(refreshBtn, 'refresh');
+						break;
 					case 'refreshSwaggerDocFailed':
 						toastBody.innerHTML = '文档更新失败！';
 						toast.show();
@@ -1349,12 +1482,12 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 				const expandedAccordions = document.querySelectorAll('.accordion-collapse.show .accordion-body[data-tag]');
 
 				expandedAccordions.forEach(accordionBody => {
-					const tagName = accordionBody.getAttribute('data-tag');
-					const normalizedTagName = normalizeControllerName(tagName);
+				const tagName = accordionBody.getAttribute('data-tag');
+				const normalizedTagName = normalizeControllerName(tagName);
 
-					// 查找匹配的控制器数据
-					Object.entries(existingApiData).forEach(([controllerName, apis]) => {
-						if (normalizedTagName === controllerName) {
+				// 查找匹配的控制器数据
+				Object.entries(existingApiData).forEach(([controllerName, apis]) => {
+					if (normalizedTagName === controllerName) {
 							markApiItemsInController(accordionBody, apis);
 						}
 					});

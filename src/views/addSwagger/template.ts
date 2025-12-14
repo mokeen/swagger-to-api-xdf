@@ -48,12 +48,18 @@ export const addSwaggerTemplate = `<!DOCTYPE html>
 				</div>
 
 				<div class="mb-3">
+					<label for="basePath" class="form-label">Base Path (可选)</label>
+					<input type="text" class="form-control" id="basePath" placeholder="/api/v1" />
+					<div class="form-text">此路径将添加到所有接口前缀，测试链接后自动填充</div>
+				</div>
+
+				<div class="mb-3">
 					<label for="swaggerDesc" class="form-label">文档描述 (可选)</label>
 					<textarea class="form-control" id="swaggerDesc" rows="2" placeholder="请输入描述信息..."></textarea>
 				</div>
 
 				<div class="d-flex gap-2 mt-4">
-					<button type="button" id="testUrlBtn" class="btn btn-outline-primary flex-grow-1" onclick="testSwaggerUrl()">
+					<button type="button" id="testUrlBtn" class="btn btn-outline-primary flex-grow-1">
 						<i class="bi bi-link-45deg"></i> 测试链接
 					</button>
 
@@ -106,6 +112,7 @@ export const addSwaggerTemplate = `<!DOCTYPE html>
 			elements.form = document.getElementById("swaggerForm");
 			elements.urlInput = document.getElementById("swaggerUrl");
 			elements.nameInput = document.getElementById("swaggerName");
+			elements.basePathInput = document.getElementById("basePath");
 			elements.descInput = document.getElementById("swaggerDesc");
 			elements.testBtn = document.getElementById("testUrlBtn");
 			elements.submitBtn = elements.form.querySelector('button[type="submit"]');
@@ -196,7 +203,8 @@ export const addSwaggerTemplate = `<!DOCTYPE html>
 				command: "addSwagger",
 				url: elements.urlInput.value.trim(),
 				name: elements.nameInput.value.trim(),
-				desc: elements.descInput.value.trim() || ""
+				basePath: elements.basePathInput.value.trim() || "",
+				desc: elements.descInput.value.trim() || "",
 			};
 
 			vscode.postMessage(formData);
@@ -265,12 +273,17 @@ export const addSwaggerTemplate = `<!DOCTYPE html>
 			try {
 				const urlObj = new URL(url);
 				const validProtocol = ['http:', 'https:'].includes(urlObj.protocol);
-				const validPath = /(\\/swagger.*|\\.json)$/i.test(urlObj.pathname);
 
-				return validProtocol &&
-					urlObj.hostname.includes('.') &&
-					!urlObj.hostname.startsWith(' ') &&
-					validPath;
+				// 支持 Swagger 2.0 和 OpenAPI 3.x 的常见路径
+				// - Swagger 2.0: /swagger-ui.html, /swagger/..., /v2/api-docs
+				// - OpenAPI 3.x: /docs, /redoc, /openapi.json, /v3/api-docs
+				// - 通用: /api-docs, /api/...
+				const validPath = /(\\/swagger|\\/docs|\\/redoc|\\/api-docs|\\/v[0-9]\\/api-docs|\\.json$|\\/api\\/)/i.test(urlObj.pathname);
+
+				// hostname 验证：不为空且不以空格开头（支持 localhost 等本地地址）
+				const validHostname = urlObj.hostname.trim().length > 0 && !urlObj.hostname.startsWith(' ');
+
+				return validProtocol && validHostname && validPath;
 			} catch {
 				return false;
 			}
@@ -368,7 +381,12 @@ export const addSwaggerTemplate = `<!DOCTYPE html>
 						elements.nameInput.value = result.info.title;
 						elements.nameInput.classList.add('is-valid');
 					}
-					
+
+					// 自动填充 basePath（如果为空）
+					if (!elements.basePathInput.value.trim() && result.info.basePath) {
+						elements.basePathInput.value = result.info.basePath;
+					}
+
 					// 自动填充描述（如果为空）
 					if (!elements.descInput.value.trim() && result.info.description) {
 						elements.descInput.value = result.info.description;

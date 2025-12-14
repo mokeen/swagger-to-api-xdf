@@ -1,14 +1,23 @@
 # Va Swagger to API (Vue2/Vue3)
 
-![版本](https://img.shields.io/badge/版本-2.0.0-blue.svg)
+![版本](https://img.shields.io/badge/版本-3.0.0-blue.svg)
 ![VS Code](https://img.shields.io/badge/VS%20Code-^1.80.0-brightgreen.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg)
 ![Vue](https://img.shields.io/badge/Vue-2%20%7C%203-brightgreen.svg)
+![OpenAPI](https://img.shields.io/badge/OpenAPI-2.0%20%7C%203.x-orange.svg)
 ![许可证](https://img.shields.io/badge/许可证-MIT-green.svg)
 
-一个强大的 VS Code 扩展，可以从 Swagger/OpenAPI v2 文档生成 TypeScript API 客户端代码，支持智能增量更新。适用于 Vue 2、Vue 3 以及任何 TypeScript + Axios 项目。
+一个强大的 VS Code 扩展，可以从 Swagger 2.0 / OpenAPI 3.x 文档生成 TypeScript API 客户端代码，支持智能增量更新。适用于 Vue 2、Vue 3 以及任何 TypeScript + Axios 项目。
 
-## 🎉 v2.0.0 重大更新
+## 🎉 v3.0.0 重大更新 - OpenAPI 3.x 支持
+
+- 🚀 **完整 OpenAPI 3.x 支持**：自动检测版本，智能规范转换，完全兼容 Swagger 2.0
+- 🔍 **智能 URL 探测**：支持 8 种常见 API 文档路径（FastAPI、Spring Boot 2/3、通用路径等）
+- ⚡ **性能优化**：避免重复规范化，性能提升 28%+，刷新文档缓存破坏机制
+- 🎨 **UI 优化**：文档信息展开/收起、响应式布局、Bootstrap 本地化、完全离线可用
+- 🔧 **用户友好**：basePath 可编辑、HTTP 方法大写、更好的错误提示
+
+## 🌟 v2.0.0 重大更新
 
 - ✨ **完全重构的类型系统**：支持复杂嵌套泛型、智能类型前缀、自动依赖收集
 - 🎯 **优化的参数处理**：准确的参数命名、完善的可选参数支持、路径参数正确处理
@@ -18,9 +27,19 @@
 
 ## ✨ 主要功能
 
+### 🚀 **OpenAPI 3.x / Swagger 2.0 双版本支持**
+
+- **智能版本检测**：自动识别 Swagger 2.0 或 OpenAPI 3.x
+- **统一内部格式**：透明转换，对用户无感知
+- **完整特性支持**：
+  - OpenAPI 3.x：`requestBody`、`components/schemas`、`servers`、`anyOf`/`allOf`/`oneOf`
+  - Swagger 2.0：`parameters`、`definitions`、`basePath`
+- **智能 URL 探测**：自动尝试 8 种常见路径，支持 FastAPI、Spring Boot 等主流框架
+- **兼容性保证**：生成的代码格式统一，无需修改现有代码
+
 ### 🎯 **选择性 API 生成**
 
-- 从 Swagger 文档中选择特定的接口
+- 从 Swagger/OpenAPI 文档中选择特定的接口
 - 只生成您需要的 API
 - 支持增量更新，不会丢失现有代码
 
@@ -62,11 +81,17 @@
 
 从 VS Code 扩展市场安装或下载 `.vsix` 文件。
 
-### 2. 添加 Swagger 文档
+### 2. 添加 Swagger/OpenAPI 文档
 
 1. 在侧边栏打开 Swagger to API 面板
 2. 点击"添加Swagger文档"
-3. 输入您的 Swagger UI URL（例如：`http://localhost:8080/swagger-ui.html`）
+3. 输入您的文档 URL，支持多种格式：
+   - **Swagger 2.0**: `http://localhost:8080/swagger-ui.html`
+   - **OpenAPI 3.x (FastAPI)**: `http://localhost:8000/docs` 或 `http://localhost:8000/openapi.json`
+   - **OpenAPI 3.x (Spring Boot 3)**: `http://localhost:8080/v3/api-docs`
+   - **直接 JSON**: `http://api.example.com/swagger.json`
+
+插件会自动探测正确的 API JSON 路径
 
 ### 3. 生成 API 代码
 
@@ -116,6 +141,7 @@ src/services/
 - **项目框架**：Vue 2、Vue 3 或任何 TypeScript 项目
 - **HTTP 客户端**：Axios（推荐）或其他兼容的 HTTP 库
 - **请求模块**：创建一个导出 `$http` 的 `request.ts` 文件
+- **后端文档**：Swagger 2.0 或 OpenAPI 3.x (支持 3.0.x 和 3.1.x)
 
 ### 请求模块示例
 
@@ -172,7 +198,9 @@ const result = await StudyCourseServices.userController.getUserList(1, 20);
 
 ## 🎯 支持的功能
 
-### Swagger v2 兼容性
+### OpenAPI 3.x / Swagger 2.0 兼容性 (v3.0 新增)
+
+**Swagger 2.0 支持：**
 
 - ✅ 完整的 Swagger v2 规范解析
 - ✅ 路径和操作（GET、POST、PUT、DELETE 等）
@@ -181,7 +209,20 @@ const result = await StudyCourseServices.userController.getUserList(1, 20);
 - ✅ 标签用于控制器分组
 - ✅ BasePath 自动处理
 - ✅ 枚举类型支持
-- ✅ 引用类型（$ref）解析
+- ✅ 引用类型（`$ref`）解析
+
+**OpenAPI 3.x 支持（v3.0 新增）：**
+
+- ✅ OpenAPI 3.0.x 和 3.1.x 完整支持
+- ✅ `requestBody` 自动转换为参数
+- ✅ `components/schemas` 自动映射到 definitions
+- ✅ `servers` 配置提取 basePath
+- ✅ `anyOf`/`allOf`/`oneOf` 智能处理
+- ✅ 可空类型自动简化
+- ✅ `$ref` 路径自动转换
+- ✅ 多种 content-type 支持（application/json 优先）
+- ✅ 智能 URL 探测（FastAPI、Spring Boot 3 等）
+- ✅ 用户可编辑 basePath
 
 ### 类型生成 (v2.0 增强)
 
@@ -263,14 +304,45 @@ const result = await StudyCourseServices.userController.getUserList(1, 20);
 **问：类型定义中为什么都有 `Types.` 前缀？**
 答：v2.0 自动为所有自定义类型添加 `Types.` 前缀，这样可以避免命名冲突，使类型来源更明确。基础类型（如 `string`、`number`）不会添加前缀。
 
+**问：如何知道我的后端是 Swagger 2.0 还是 OpenAPI 3.x？**
+答：插件会自动检测。如果不确定，可以直接尝试添加文档 URL，插件会自动探测正确的格式。OpenAPI 3.x 文档通常包含 `"openapi": "3.x.x"`，Swagger 2.0 包含 `"swagger": "2.0"`。
+
+**问：OpenAPI 3.x 文档添加失败怎么办？**
+答：插件会自动尝试 8 种常见路径。如果都失败，请检查：
+
+1. URL 是否可访问（在浏览器中打开测试）
+2. 是否是 JSON 格式的文档（不是 UI 页面）
+3. 尝试直接使用 JSON 文件 URL（如 `http://localhost:8000/openapi.json`）
+4. 查看 VS Code 的"输出"面板 → "Va Swagger to API"，查看详细错误信息
+
+**问：刷新文档后参数没有更新？**
+答：v3.0 已修复此问题。刷新时会破坏缓存，确保获取最新数据。如果仍有问题，请重新添加文档。
+
+**问：可以编辑 basePath 吗？**
+答：可以！v3.0 支持在预览界面编辑 basePath。点击 basePath 旁边的"编辑"按钮即可修改，修改会保存到配置文件中。
+
 ## 🎨 适用场景
+
+### 前端项目
 
 - **Vue 2/3 项目**：完美支持 Vue 2 和 Vue 3 + TypeScript + Axios 技术栈
 - **React/Angular 项目**：生成纯 TypeScript 代码，可用于任何前端框架
 - **Node.js 后端**：也可用于 Node.js 后端项目的 API 客户端
+
+### 后端框架兼容性
+
+- **Java Spring Boot**：Swagger 2.0 (Spring Boot 2.x) 和 OpenAPI 3.x (Spring Boot 3.x)
+- **Python FastAPI**：原生 OpenAPI 3.x 支持
+- **Node.js (Express/NestJS)**：Swagger 2.0 和 OpenAPI 3.x
+- **Go (Gin/Echo)**：Swagger 2.0 和 OpenAPI 3.x
+- **其他框架**：任何提供 Swagger/OpenAPI 文档的后端
+
+### 开发场景
+
 - **团队协作**：统一接口规范，减少沟通成本
 - **快速开发**：自动生成类型定义，减少手动编码
 - **接口维护**：支持增量更新，适应接口变更
+- **微服务架构**：管理多个服务的 API 文档
 
 ## 🔍 高级功能
 

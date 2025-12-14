@@ -25,6 +25,7 @@ export class ContractService {
 			name: string;
 			url: string;
 			desc: string;
+			basePath?: string;
 			uid: string;
 		}
 	): Promise<void> {
@@ -47,6 +48,20 @@ export class ContractService {
 	static async deleteContract(workspacePath: string, uid: string): Promise<void> {
 		const config = await this.getConfig(workspacePath);
 		config.contracts = config.contracts.filter(c => c.uid !== uid);
+		await this.saveConfig(workspacePath, config);
+	}
+
+	static async updateContractBasePath(
+		workspacePath: string,
+		uid: string,
+		basePath: string
+	): Promise<void> {
+		const config = await this.getConfig(workspacePath);
+		const contract = config.contracts.find(c => c.uid === uid);
+		if (!contract) {
+			throw new Error(`未找到 UID 为 ${uid} 的合约`);
+		}
+		contract.basePath = basePath;
 		await this.saveConfig(workspacePath, config);
 	}
 

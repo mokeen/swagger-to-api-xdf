@@ -1,0 +1,1539 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Tiku-data-API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/get_features": {
+      "post": {
+        "summary": "Get Features",
+        "operationId": "get_features_get_features_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeatureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get_train_features": {
+      "get": {
+        "summary": "Get Features",
+        "operationId": "get_features_get_train_features_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user_logs/insert_question_log": {
+      "post": {
+        "tags": [
+          "UserLogs"
+        ],
+        "summary": "插入用户做题记录",
+        "description": "插入用户做题记录信息",
+        "operationId": "insert_question_log_user_logs_insert_question_log_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserQuestionLogRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user_logs/knowledge_statistics": {
+      "post": {
+        "tags": [
+          "UserLogs"
+        ],
+        "summary": "获取用户做题-知识点维度统计",
+        "description": "获取用户做题知识点维度统计信息",
+        "operationId": "user_knowledge_statistics_user_logs_knowledge_statistics_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserStatisticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeStatisticsItem"
+                  },
+                  "type": "array",
+                  "title": "Response User Knowledge Statistics User Logs Knowledge Statistics Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user_logs/question_statistics": {
+      "post": {
+        "tags": [
+          "UserLogs"
+        ],
+        "summary": "获取用户做题题目-维度统计",
+        "description": "获取用户做题题目维度统计信息",
+        "operationId": "user_question_statistics_user_logs_question_statistics_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserStatisticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/QuestionStatisticsItem"
+                  },
+                  "type": "array",
+                  "title": "Response User Question Statistics User Logs Question Statistics Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user_logs/tag_statistics": {
+      "post": {
+        "tags": [
+          "UserLogs"
+        ],
+        "summary": "获取用户做题-标签维度统计",
+        "description": "获取用户做题标签维度统计信息",
+        "operationId": "user_tag_statistics_user_logs_tag_statistics_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserStatisticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TagStatisticsItem"
+                  },
+                  "type": "array",
+                  "title": "Response User Tag Statistics User Logs Tag Statistics Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user_logs/score_rate_statistics": {
+      "post": {
+        "tags": [
+          "UserLogs"
+        ],
+        "summary": "获取用户做题 得分率聚合统计",
+        "description": "得分率聚合统计",
+        "operationId": "user_score_rate_statistics_user_logs_score_rate_statistics_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserStatisticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/UserScoreRateExStatisticsItem"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response User Score Rate Statistics User Logs Score Rate Statistics Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user_logs/date_score_rate_statistics": {
+      "post": {
+        "tags": [
+          "UserLogs"
+        ],
+        "summary": "获取用户做题-按日和来源分区-得分率聚合统计",
+        "description": "按日和来源分区分区-得分率聚合统计",
+        "operationId": "user_date_score_rate_statistics_user_logs_date_score_rate_statistics_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserStatisticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserDateScoreRateStatisticsItem"
+                  },
+                  "type": "array",
+                  "title": "Response User Date Score Rate Statistics User Logs Date Score Rate Statistics Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user_logs/difficulty_distribution_statistics": {
+      "post": {
+        "tags": [
+          "UserLogs"
+        ],
+        "summary": "获取用户做题-难度聚合统计",
+        "description": "难度聚合统计",
+        "operationId": "user_difficulty_distribution_statistics_user_logs_difficulty_distribution_statistics_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserStatisticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserDifficultyDistributionStatisticsItem"
+                  },
+                  "type": "array",
+                  "title": "Response User Difficulty Distribution Statistics User Logs Difficulty Distribution Statistics Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/question/": {
+      "post": {
+        "tags": [
+          "Questions"
+        ],
+        "summary": "插入-覆盖题目信息",
+        "description": "用于保存用户做题行为数据",
+        "operationId": "insert_question_question__post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Question"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/question/knowledge-points": {
+      "post": {
+        "tags": [
+          "Questions"
+        ],
+        "summary": "插入题目相关知识点",
+        "description": "插入题目相关知识点",
+        "operationId": "insert_knowledge_points_question_knowledge_points_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "$ref": "#/components/schemas/QuestionKnowledgePoint"
+                },
+                "type": "array",
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/question/tags": {
+      "post": {
+        "tags": [
+          "Questions"
+        ],
+        "summary": "插入题目相关标签",
+        "description": "插入题目相关标签",
+        "operationId": "insert_tags_question_tags_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "$ref": "#/components/schemas/QuestionTag"
+                },
+                "type": "array",
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/question/statistics": {
+      "post": {
+        "tags": [
+          "Questions"
+        ],
+        "summary": "获取全局题目统计信息",
+        "description": "可选范围 考试局 课程体系 科目  难度 来源类型 来源ID 日期周期",
+        "operationId": "get_question_statistics_question_statistics_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionStatisticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/QuestionStatisticsItem"
+                  },
+                  "type": "array",
+                  "title": "Response Get Question Statistics Question Statistics Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/question/kp_statistics": {
+      "post": {
+        "tags": [
+          "Questions"
+        ],
+        "summary": "获取知识点全局统计信息",
+        "description": "可选范围 考试局 课程体系 科目  难度 来源类型 来源ID 日期周期",
+        "operationId": "get_kp_statistics_question_kp_statistics_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KpStatisticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeStatisticsItem"
+                  },
+                  "type": "array",
+                  "title": "Response Get Kp Statistics Question Kp Statistics Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/question/tag_statistics": {
+      "post": {
+        "tags": [
+          "Questions"
+        ],
+        "summary": "获取标签全局统计信息",
+        "description": "可选范围 考试局 课程体系 科目  难度 来源类型 来源ID 日期周期，  获取 尝试次数，得分率",
+        "operationId": "get_question_statistics_question_tag_statistics_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagStatisticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TagStatisticsItem"
+                  },
+                  "type": "array",
+                  "title": "Response Get Question Statistics Question Tag Statistics Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "FeatureRequest": {
+        "properties": {
+          "user_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "User Ids"
+          },
+          "question_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Question Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_ids",
+          "question_ids"
+        ],
+        "title": "FeatureRequest"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "KnowledgeStatisticsItem": {
+        "properties": {
+          "kp_id": {
+            "type": "string",
+            "title": "Kp Id"
+          },
+          "total_attempts": {
+            "type": "integer",
+            "title": "Total Attempts"
+          },
+          "avg_score_rate": {
+            "type": "number",
+            "title": "Avg Score Rate"
+          },
+          "last_practice_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Practice Time"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kp_id",
+          "total_attempts",
+          "avg_score_rate",
+          "last_practice_time"
+        ],
+        "title": "KnowledgeStatisticsItem"
+      },
+      "KpStatisticsRequest": {
+        "properties": {
+          "exam_board_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exam Board Id"
+          },
+          "cs_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cs Id"
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id"
+          },
+          "difficulty_level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difficulty Level"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Type"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "kp_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kp Ids"
+          }
+        },
+        "type": "object",
+        "title": "KpStatisticsRequest"
+      },
+      "Question": {
+        "properties": {
+          "question_id": {
+            "type": "string",
+            "title": "Question Id",
+            "description": "题目ID，在app内唯一"
+          },
+          "exam_board_id": {
+            "type": "string",
+            "title": "Exam Board Id",
+            "description": "考试局ID"
+          },
+          "cs_id": {
+            "type": "string",
+            "title": "Cs Id",
+            "description": "课程体系ID"
+          },
+          "subject_id": {
+            "type": "string",
+            "title": "Subject Id",
+            "description": "科目ID"
+          },
+          "difficulty_level": {
+            "type": "integer",
+            "maximum": 5,
+            "minimum": 1,
+            "title": "Difficulty Level",
+            "description": "题目难度，1-5级",
+            "default": 1
+          },
+          "question_type": {
+            "type": "string",
+            "title": "Question Type",
+            "description": "题型ID/类型"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_id",
+          "exam_board_id",
+          "cs_id",
+          "subject_id",
+          "question_type"
+        ],
+        "title": "Question"
+      },
+      "QuestionKnowledgePoint": {
+        "properties": {
+          "kp_id": {
+            "type": "string",
+            "title": "Kp Id",
+            "description": "知识点id"
+          },
+          "question_id": {
+            "type": "string",
+            "title": "Question Id",
+            "description": "题目ID，在app内唯一"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kp_id",
+          "question_id"
+        ],
+        "title": "QuestionKnowledgePoint"
+      },
+      "QuestionStatisticsItem": {
+        "properties": {
+          "question_id": {
+            "type": "string",
+            "title": "Question Id"
+          },
+          "total_attempts": {
+            "type": "integer",
+            "title": "Total Attempts"
+          },
+          "avg_score_rate": {
+            "type": "number",
+            "title": "Avg Score Rate"
+          },
+          "last_practice_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Practice Time"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_id",
+          "total_attempts",
+          "avg_score_rate",
+          "last_practice_time"
+        ],
+        "title": "QuestionStatisticsItem"
+      },
+      "QuestionStatisticsRequest": {
+        "properties": {
+          "exam_board_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exam Board Id"
+          },
+          "cs_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cs Id"
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id"
+          },
+          "difficulty_level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difficulty Level"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Type"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "question_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Ids"
+          }
+        },
+        "type": "object",
+        "title": "QuestionStatisticsRequest"
+      },
+      "QuestionTag": {
+        "properties": {
+          "tag_id": {
+            "type": "string",
+            "title": "Tag Id",
+            "description": "tag_id"
+          },
+          "question_id": {
+            "type": "string",
+            "title": "Question Id",
+            "description": "题目ID，在app内唯一"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tag_id",
+          "question_id"
+        ],
+        "title": "QuestionTag"
+      },
+      "TagStatisticsItem": {
+        "properties": {
+          "tag_id": {
+            "type": "string",
+            "title": "Tag Id"
+          },
+          "total_attempts": {
+            "type": "integer",
+            "title": "Total Attempts"
+          },
+          "avg_score_rate": {
+            "type": "number",
+            "title": "Avg Score Rate"
+          },
+          "last_practice_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Practice Time"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tag_id",
+          "total_attempts",
+          "avg_score_rate",
+          "last_practice_time"
+        ],
+        "title": "TagStatisticsItem"
+      },
+      "TagStatisticsRequest": {
+        "properties": {
+          "exam_board_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exam Board Id"
+          },
+          "cs_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cs Id"
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id"
+          },
+          "difficulty_level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difficulty Level"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Type"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "tag_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tag Ids"
+          }
+        },
+        "type": "object",
+        "title": "TagStatisticsRequest"
+      },
+      "UserDateScoreRateStatisticsItem": {
+        "properties": {
+          "stat_date": {
+            "type": "string",
+            "title": "Stat Date"
+          },
+          "source_type": {
+            "type": "string",
+            "title": "Source Type"
+          },
+          "source_id": {
+            "type": "string",
+            "title": "Source Id"
+          },
+          "total_attempts": {
+            "type": "integer",
+            "title": "Total Attempts"
+          },
+          "avg_score_rate": {
+            "type": "number",
+            "title": "Avg Score Rate"
+          },
+          "last_practice_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Practice Time"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stat_date",
+          "source_type",
+          "source_id",
+          "total_attempts",
+          "avg_score_rate",
+          "last_practice_time"
+        ],
+        "title": "UserDateScoreRateStatisticsItem"
+      },
+      "UserDifficultyDistributionStatisticsItem": {
+        "properties": {
+          "difficulty_level": {
+            "type": "integer",
+            "title": "Difficulty Level"
+          },
+          "total_attempts": {
+            "type": "integer",
+            "title": "Total Attempts"
+          },
+          "avg_score_rate": {
+            "type": "number",
+            "title": "Avg Score Rate"
+          },
+          "difficulty_ratio": {
+            "type": "number",
+            "title": "Difficulty Ratio"
+          },
+          "full_score_cnt": {
+            "type": "integer",
+            "title": "Full Score Cnt"
+          },
+          "partial_correct_cnt": {
+            "type": "integer",
+            "title": "Partial Correct Cnt"
+          },
+          "zero_score_cnt": {
+            "type": "integer",
+            "title": "Zero Score Cnt"
+          }
+        },
+        "type": "object",
+        "required": [
+          "difficulty_level",
+          "total_attempts",
+          "avg_score_rate",
+          "difficulty_ratio",
+          "full_score_cnt",
+          "partial_correct_cnt",
+          "zero_score_cnt"
+        ],
+        "title": "UserDifficultyDistributionStatisticsItem"
+      },
+      "UserQuestionLogRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "question_id": {
+            "type": "string",
+            "title": "Question Id"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "total_score": {
+            "type": "number",
+            "title": "Total Score"
+          },
+          "submit_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Submit Time"
+          },
+          "source_id": {
+            "type": "string",
+            "title": "Source Id"
+          },
+          "source_type": {
+            "type": "string",
+            "title": "Source Type"
+          },
+          "record_id": {
+            "type": "string",
+            "title": "Record Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "question_id",
+          "score",
+          "total_score",
+          "submit_time",
+          "source_id",
+          "source_type",
+          "record_id"
+        ],
+        "title": "UserQuestionLogRequest"
+      },
+      "UserScoreRateExStatisticsItem": {
+        "properties": {
+          "total_attempts": {
+            "type": "integer",
+            "title": "Total Attempts"
+          },
+          "avg_score_rate": {
+            "type": "number",
+            "title": "Avg Score Rate"
+          },
+          "last_practice_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Practice Time"
+          },
+          "full_score_cnt": {
+            "type": "integer",
+            "title": "Full Score Cnt"
+          },
+          "partial_correct_cnt": {
+            "type": "integer",
+            "title": "Partial Correct Cnt"
+          },
+          "zero_score_cnt": {
+            "type": "integer",
+            "title": "Zero Score Cnt"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_attempts",
+          "avg_score_rate",
+          "last_practice_time",
+          "full_score_cnt",
+          "partial_correct_cnt",
+          "zero_score_cnt"
+        ],
+        "title": "UserScoreRateExStatisticsItem"
+      },
+      "UserStatisticsRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id",
+            "description": "用户ID"
+          },
+          "exam_board_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exam Board Id",
+            "description": "考试局id"
+          },
+          "cs_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cs Id",
+            "description": "课程体系id"
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id",
+            "description": "科目id"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date",
+            "description": "开始时间"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date",
+            "description": "结束时间"
+          },
+          "score_rate_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Rate Max",
+            "description": "最大得分率-过滤"
+          },
+          "score_rate_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Rate Min",
+            "description": "最小得分率-过滤"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "title": "UserStatisticsRequest"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}
