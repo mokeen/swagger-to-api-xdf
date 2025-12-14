@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8" />
+		<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src <%= cspSource %> https: data:; style-src <%= cspSource %> 'unsafe-inline'; font-src <%= cspSource %> data:; script-src 'nonce-<%= nonce %>';" />
+		<title>Swagger文档预览</title>
+		<link href="<%= bootstrapCssUri %>" rel="stylesheet" />
+				<link rel="stylesheet" href="<%= previewSwaggerCssUri %>" />
+	</head>
+
+	<body>
+		<div class="main-container">
+			<!-- 基础信息卡片-->
+		<div class="doc-card card" id="basic-info-card">
+			<div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+				<div class="d-flex align-items-center gap-2">
+					<h5 class="mb-0">文档信息</h5>
+					<button id="toggle-info-btn" class="btn btn-sm btn-light" style="padding: 2px 8px; font-size: 12px;" title="展开/收起">
+						<svg id="toggle-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+							<path d="M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z"/>
+						</svg>
+					</button>
+				</div>
+				<div class="right-operate-btn d-flex align-items-center gap-2">
+						<button id="refresh-btn" class="btn btn-sm btn-light">
+							<svg t="1754470396208" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="6944" width="18" height="18"><path d="M887.456 443.744l102.4 136.512h-76.064c-32.48 192.544-200 339.2-401.792 339.2a407.104 407.104 0 0 1-342.56-186.752 32 32 0 0 1 53.76-34.688A343.104 343.104 0 0 0 512 855.456c166.304 0 305.024-118.208 336.672-275.2h-63.616l102.4-136.512zM512 104.544c145.664 0 278.016 77.12 350.848 200.16a32 32 0 0 1-55.04 32.608A343.232 343.232 0 0 0 512 168.544c-178.176 0-324.64 135.648-341.76 309.312h68.704l-102.4 136.544-102.4-136.544H105.92C123.296 268.8 298.464 104.544 512 104.544z" fill="#515151" p-id="6945"></path></svg>
+							刷新文档
+						</button>
+						<button id="export-btn" class="btn btn-sm btn-light">
+							<svg t="1754470912280" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="8706" width="18" height="18"><path d="M909.5 671.4h-625c-17.7 0-32-14.3-32-32s14.3-32 32-32h625c17.7 0 32 14.3 32 32s-14.3 32-32 32z" p-id="8707" fill="#515151"></path><path d="M904.8 662.7c-8.2 0-16.4-3.1-22.6-9.4l-225-225c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l225 225c12.5 12.5 12.5 32.8 0 45.3-6.3 6.3-14.5 9.4-22.7 9.4z" p-id="8708" fill="#515151"></path><path d="M679.5 905.2c-8.2 0-16.4-3.1-22.6-9.4-12.5-12.5-12.5-32.8 0-45.3l225-225c12.5-12.5 32.8-12.5 45.3 0s12.5 32.8 0 45.3l-225 225c-6.3 6.3-14.5 9.4-22.7 9.4z" p-id="8709" fill="#515151"></path><path d="M448.2 958.3H229.7c-89.3 0-162-72.7-162-162V228.2c0-89.3 72.7-162 162-162h568.1c89.3 0 162 72.7 162 162v208.1c0 17.7-14.3 32-32 32s-32-14.3-32-32V228.2c0-54-44-98-98-98H229.7c-54 0-98 44-98 98v568.1c0 54 44 98 98 98h218.5c17.7 0 32 14.3 32 32s-14.3 32-32 32z" p-id="8710" fill="#515151"></path></svg>
+							导出接口
+						</button>
+						<span id="selected-count" class="badge bg-secondary text-white">已选 0 个</span>
+					</div>
+				</div>
+				<div class="card-body">
+					<div class="container-fluid"></div>
+				</div>
+			</div>
+
+			<!-- Controller 顶部工具栏（不随下方列表滚动） -->
+			<div id="controller-toolbar">
+				<div class="d-flex justify-content-end align-items-center gap-2">
+					<div class="input-group input-group-sm">
+						<input type="text" class="form-control controller-search-input" placeholder="筛选 Controller（名称或描述）..." />
+						<button class="btn btn-outline-secondary controller-search-clear" type="button" title="清除">&times;</button>
+					</div>
+					<div class="btn-group btn-group-sm" role="group">
+						<button type="button" class="btn btn-outline-primary global-select-all-btn" title="全部选中">全选</button>
+						<button type="button" class="btn btn-outline-secondary global-deselect-all-btn" title="取消全选">取消</button>
+					</div>
+				</div>
+			</div>
+
+			<!-- 接口列表卡片 -->
+			<div id="interface-card">
+				<div class="container-fluid">
+					<!-- Controller列表将在这里渲染 -->
+				</div>
+			</div>
+		</div>
+
+		<div class="toast-container position-fixed top-0 end-0 p-3">
+			<div id="liveToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+				<div class="toast-header">
+					<strong class="me-auto">提示</strong>
+					<button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+				</div>
+				<div class="toast-body"></div>
+			</div>
+		</div>
+
+		<script nonce="<%= nonce %>" src="<%= bootstrapJsUri %>"></script>
+		<script nonce="<%= nonce %>">
+			window.__SWAGGER_PREVIEW_DATA__ = JSON.parse('<%- previewData %>');
+		</script>
+		<script nonce="<%= nonce %>" src="<%= previewSwaggerJsUri %>"></script>
+	</body>
+</html>

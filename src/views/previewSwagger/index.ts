@@ -1,12 +1,14 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { previewSwaggerTemplate } from './template';
+import * as fs from 'fs';
+import * as ejs from 'ejs';
 
 export function getWebviewContent(
 	content: string,
 	context: vscode.ExtensionContext,
 	webview: vscode.Webview
 ): string {
+	const nonce = getNonce();
 	const { basicInfo, swaggerJson } = JSON.parse(content);
 
 	// 获取本地资源路径并转换为 webview URI
@@ -16,18 +18,47 @@ export function getWebviewContent(
 	const bootstrapJsUri = webview.asWebviewUri(
 		vscode.Uri.file(path.join(context.extensionPath, 'resources', 'bootstrap', 'bootstrap.bundle.min.js'))
 	);
+	const previewSwaggerCssUri = webview.asWebviewUri(
+		vscode.Uri.file(path.join(context.extensionPath, 'resources', 'webview', 'previewSwagger', 'previewSwagger.css'))
+	);
+	const previewSwaggerJsUri = webview.asWebviewUri(
+		vscode.Uri.file(path.join(context.extensionPath, 'resources', 'webview', 'previewSwagger', 'previewSwagger.js'))
+	);
 
-	return previewSwaggerTemplate
-		.replace('{{bootstrapCssUri}}', bootstrapCssUri.toString())
-		.replace('{{bootstrapJsUri}}', bootstrapJsUri.toString())
-		.replace('{{basicInfo}}', JSON.stringify(basicInfo))
-		.replace('{{swaggerJson}}', prepareSwaggerContent(JSON.stringify(swaggerJson)));
+	const templatePath = path.join(context.extensionPath, 'resources', 'webview', 'previewSwagger', 'previewSwagger.ejs');
+	const template = fs.readFileSync(templatePath, 'utf8');
+
+	return ejs.render(template, {
+		nonce,
+		cspSource: webview.cspSource,
+		bootstrapCssUri: bootstrapCssUri.toString(),
+		bootstrapJsUri: bootstrapJsUri.toString(),
+		previewSwaggerCssUri: previewSwaggerCssUri.toString(),
+		previewSwaggerJsUri: previewSwaggerJsUri.toString(),
+		previewData: escapeForSingleQuotedJsString(
+			JSON.stringify({
+				basicInfo,
+				swaggerJson,
+			})
+		),
+	});
 }
 
-function prepareSwaggerContent(content: string): string {
+function escapeForSingleQuotedJsString(content: string): string {
 	return content
 		.replace(/\\/g, '\\\\')
-		.replace(/`/g, '\\`')
-		.replace(/\$/g, '\\$')
-		.replace(/[\u0000-\u001F]/g, ''); // 移除控制字符
+		.replace(/'/g, "\\'")
+		.replace(/\r?\n/g, '\\n')
+		.replace(/\u2028/g, '\\u2028')
+		.replace(/\u2029/g, '\\u2029')
+		.replace(/<\/(script)/gi, '<\\/$1');
+}
+
+function getNonce(): string {
+	let text = '';
+	const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+	for (let i = 0; i < 32; i++) {
+		text += possible.charAt(Math.floor(Math.random() * possible.length));
+	}
+	return text;
 }

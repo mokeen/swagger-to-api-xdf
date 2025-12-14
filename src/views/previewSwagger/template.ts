@@ -1,6 +1,8 @@
 export const previewSwaggerTemplate = `<!DOCTYPE html>
 <html>
 	<head>
+		<meta charset="UTF-8" />
+		<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src {{cspSource}} https: data:; style-src {{cspSource}} 'unsafe-inline'; font-src {{cspSource}} data:; script-src 'nonce-{{nonce}}';" />
 		<title>Swagger文档预览</title>
 		<link href="{{bootstrapCssUri}}" rel="stylesheet" />
 		<style>
@@ -412,9 +414,9 @@ export const previewSwaggerTemplate = `<!DOCTYPE html>
 		</div>
 
 
-		<script src="{{bootstrapJsUri}}"></script>
+		<script nonce="{{nonce}}" src="{{bootstrapJsUri}}"></script>
 
-		<script>
+		<script nonce="{{nonce}}">
 			const vscode = acquireVsCodeApi();
 
 			// 全局定时器管理

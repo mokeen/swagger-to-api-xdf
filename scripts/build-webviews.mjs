@@ -12,6 +12,11 @@ const webviews = [
 		entry: path.join(projectRoot, 'webview-src', 'addSwagger', 'main.ts'),
 		outfile: path.join(projectRoot, 'resources', 'webview', 'addSwagger', 'addSwagger.js'),
 	},
+	{
+		name: 'previewSwagger',
+		entry: path.join(projectRoot, 'webview-src', 'previewSwagger', 'main.ts'),
+		outfile: path.join(projectRoot, 'resources', 'webview', 'previewSwagger', 'previewSwagger.js'),
+	},
 ];
 
 async function buildAll({ watch }) {
