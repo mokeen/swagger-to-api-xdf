@@ -2,6 +2,24 @@
 
 此文件记录了"Va Swagger to API(vue)"扩展的所有重要更改。
 
+## [3.1.0] - 2025-12-14
+
+### 🧩 PreviewSwagger 预览页重构（零回归）
+
+- **模板拆分**：将预览页从单文件内联模板重构为独立的 `EJS + CSS + JS` 资源文件，提升可读性与可维护性
+- **CSP 合规**：外部资源引用保持 webview CSP 要求（nonce / 本地资源 URI）
+- **交互一致性**：保持原有消息协议与核心交互行为一致（刷新、导出、筛选、全选/取消全选、DTO 展开等）
+
+### 🏗️ 构建与发布链路优化
+
+- **Webview 构建**：使用 `esbuild` 将 `webview-src/**/main.ts` 打包为 `resources/webview/**/**.js`（包含 sourcemap）
+- **Extension Bundling**：使用 `esbuild` 将扩展入口打包为 `dist/extension.js`，并将 `vscode` 设为 external
+- **预发布脚本**：`vscode:prepublish` 统一走 `compile:all`，确保发布包内始终包含最新 webview 产物与 extension bundle
+
+### 📦 包体积与文件数优化
+
+- **.vscodeignore**：补充更合理的忽略规则，显著减少 VSIX 文件数量与体积（不影响运行所需的 `dist/**` 与 `resources/**`）
+
 ## [3.0.0] - 2025-10-27
 
 ### 🎉 OpenAPI 3.x 支持重大更新

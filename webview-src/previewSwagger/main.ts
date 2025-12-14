@@ -180,25 +180,134 @@ const exportBtn = getEl<HTMLButtonElement>('export-btn');
 
 let basicContent: any = null;
 let swaggerJsonData: SwaggerSpec | null = null;
-let selectedApis: SelectedApis = {};
 let existingApiData: ExistingApiData = {};
+
+let selectedApiCount = 0;
+let selectedApiMapByController: Map<string, Map<string, ApiItem>> = new Map();
+let existingApiSetByController: Map<string, Set<string>> = new Map();
+let controllerTotalCountByTag: Map<string, number> = new Map();
+let controllerStatsUpdateTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+
+let refreshInFlight = false;
+let exportInFlight = false;
+
+let controllerSearchInputListener: ((e: Event) => void) | null = null;
+let controllerSearchClearListener: ((e: MouseEvent) => void) | null = null;
+
+function debounce<T extends (...args: any[]) => void>(fn: T, waitMs: number): (...args: Parameters<T>) => void {
+	let timer: ReturnType<typeof setTimeout> | null = null;
+	return (...args: Parameters<T>) => {
+		if (timer) clearTimeout(timer);
+		timer = setTimeout(() => fn(...args), waitMs);
+	};
+}
+
+function buildApiKey(path: string, method: string): string {
+	return `${path}#${String(method).toLowerCase()}`;
+}
+
+function getSelectedApisForExport(): SelectedApis {
+	const res: SelectedApis = {};
+	selectedApiMapByController.forEach((apiMap, controller) => {
+		if (apiMap.size > 0) {
+			res[controller] = Array.from(apiMap.values());
+		}
+	});
+	return res;
+}
+
+function computeControllerTotalCounts(spec: SwaggerSpec): Map<string, number> {
+	const counts = new Map<string, number>();
+	const paths = spec?.paths || {};
+	Object.entries(paths).forEach(([_, methods]) => {
+		Object.entries(methods || {}).forEach(([__, methodObj]) => {
+			const op = methodObj as SwaggerOperation;
+			const tags = op.tags && op.tags.length > 0 ? op.tags : ['default'];
+			tags.forEach((tag) => {
+				counts.set(tag, (counts.get(tag) || 0) + 1);
+			});
+		});
+	});
+	return counts;
+}
+
+function updateControllerStats(tagName?: string): void {
+	const tagsToUpdate: string[] = [];
+	if (tagName) {
+		tagsToUpdate.push(tagName);
+	} else {
+		const fromCounts = Array.from(controllerTotalCountByTag.keys());
+		if (fromCounts.length > 0) {
+			fromCounts.forEach((t) => tagsToUpdate.push(t));
+		} else {
+			const headerEls = interfaceContainer.querySelectorAll<HTMLElement>('.controller-stats[data-tag]');
+			const set = new Set<string>();
+			headerEls.forEach((el) => {
+				const t = el.getAttribute('data-tag') || '';
+				if (t) set.add(t);
+			});
+			set.forEach((t) => tagsToUpdate.push(t));
+		}
+	}
+
+	tagsToUpdate.forEach((t) => {
+		const total = controllerTotalCountByTag.get(t) || 0;
+		const selected = selectedApiMapByController.get(t)?.size || 0;
+		const existing = existingApiSetByController.get(normalizeControllerName(t))?.size || 0;
+
+		interfaceContainer
+			.querySelectorAll<HTMLElement>(`.controller-stats[data-tag="${CSS.escape(t)}"]`)
+			.forEach((el) => {
+				el.textContent = `已选 ${selected}/${total}`;
+			});
+
+		interfaceContainer
+			.querySelectorAll<HTMLElement>(`.controller-stats-bar[data-tag="${CSS.escape(t)}"]`)
+			.forEach((el) => {
+				el.innerHTML = `
+					<span class="badge bg-light text-dark border">总 ${total}</span>
+					<span class="badge bg-primary">已选 ${selected}</span>
+					<span class="badge bg-success">已存在 ${existing}</span>
+				`;
+			});
+	});
+}
+
+function scheduleUpdateControllerStats(tagName: string): void {
+	if (controllerStatsUpdateTimers.has(tagName)) {
+		return;
+	}
+	controllerStatsUpdateTimers.set(
+		tagName,
+		setTimeout(() => {
+			controllerStatsUpdateTimers.delete(tagName);
+			updateControllerStats(tagName);
+		}, 50)
+	);
+}
+
+function rebuildExistingApiSets(): void {
+	existingApiSetByController = new Map();
+	Object.entries(existingApiData || {}).forEach(([controllerName, apis]) => {
+		const key = /Controller$/i.test(controllerName) ? controllerName : normalizeControllerName(controllerName);
+		const set = new Set<string>();
+		(apis || []).forEach((api) => {
+			set.add(buildApiKey(api.path, api.method));
+		});
+		existingApiSetByController.set(key, set);
+	});
+	updateControllerStats();
+}
 
 // 更新已选接口数量显示
 function updateSelectedCount(): void {
 	const selectedCountElement = document.getElementById('selected-count');
 	if (!selectedCountElement) return;
 
-	let totalCount = 0;
-	Object.values(selectedApis).forEach(apis => {
-		if (Array.isArray(apis)) {
-			totalCount += apis.length;
-		}
-	});
-
-	selectedCountElement.textContent = '已选 ' + totalCount + ' 个';
+	selectedCountElement.textContent = '已选 ' + selectedApiCount + ' 个';
 
 	// 根据数量调整样式
-	if (totalCount > 0) {
+	if (selectedApiCount > 0) {
 		selectedCountElement.className = 'badge bg-success text-white';
 	} else {
 		selectedCountElement.className = 'badge bg-secondary text-white';
@@ -231,7 +340,7 @@ function clearAllFilters(): void {
 	}
 
 	// 清除所有API级别的筛选
-	document.querySelectorAll<HTMLInputElement>('.api-search-input').forEach((input) => {
+	interfaceContainer.querySelectorAll<HTMLInputElement>('.api-search-input').forEach((input) => {
 		input.value = '';
 		// 显示对应Controller下的所有API
 		const accordionBody = input.closest('.accordion-body');
@@ -256,6 +365,9 @@ toggleInfoBtn.addEventListener('click', function () {
 });
 
 async function handleRefreshDoc(this: HTMLButtonElement): Promise<void> {
+	if (refreshInFlight) return;
+	refreshInFlight = true;
+
 	const btn = this;
 	btn.disabled = true;
 	exportBtn.disabled = true;
@@ -274,17 +386,15 @@ async function handleRefreshDoc(this: HTMLButtonElement): Promise<void> {
 }
 
 function handleExportDoc(this: HTMLButtonElement): void {
-	// 检查是否选中了接口
-	const hasSelectedApis = Object.keys(selectedApis).some(controller =>
-		selectedApis[controller] && selectedApis[controller].length > 0
-	);
+	if (exportInFlight) return;
 
-	if (!hasSelectedApis) {
+	if (selectedApiCount <= 0) {
 		showToast('请先选择要导出的接口！');
 		return;
 	}
 
 	const btn = this;
+	exportInFlight = true;
 	btn.disabled = true;
 	refreshBtn.disabled = true;
 	btn.classList.add('loading');
@@ -293,7 +403,7 @@ function handleExportDoc(this: HTMLButtonElement): void {
 		导出中...
 	`;
 
-	postToVscode({ command: 'exportSwaggerDoc', content: selectedApis });
+	postToVscode({ command: 'exportSwaggerDoc', content: getSelectedApisForExport() });
 
 	// 导出按钮状态将通过全局消息监听器处理
 }
@@ -303,17 +413,19 @@ function resetButtonState(btn: HTMLButtonElement, type: 'refresh' | 'export'): v
 	btn.classList.remove('loading');
 	switch (type) {
 		case 'refresh':
+			refreshInFlight = false;
 			exportBtn.disabled = false;
 			btn.innerHTML = `
 				<svg t="1754470396208" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="6944" width="18" height="18"><path d="M887.456 443.744l102.4 136.512h-76.064c-32.48 192.544-200 339.2-401.792 339.2a407.104 407.104 0 0 1-342.56-186.752 32 32 0 0 1 53.76-34.688A343.104 343.104 0 0 0 512 855.456c166.304 0 305.024-118.208 336.672-275.2h-63.616l102.4-136.512zM512 104.544c145.664 0 278.016 77.12 350.848 200.16a32 32 0 0 1-55.04 32.608A343.232 343.232 0 0 0 512 168.544c-178.176 0-324.64 135.648-341.76 309.312h68.704l-102.4 136.544-102.4-136.544H105.92C123.296 268.8 298.464 104.544 512 104.544z" fill="#515151" p-id="6945"></path></svg>
-				刷新文档
+				<span class="ms-1 d-none d-sm-inline">刷新文档</span>
 			`;
 			break
 		case 'export':
+			exportInFlight = false;
 			refreshBtn.disabled = false;
 			btn.innerHTML = `
 				<svg t="1754470912280" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="8706" width="18" height="18"><path d="M909.5 671.4h-625c-17.7 0-32-14.3-32-32s14.3-32 32-32h625c17.7 0 32 14.3 32 32s-14.3 32-32 32z" p-id="8707" fill="#515151"></path><path d="M904.8 662.7c-8.2 0-16.4-3.1-22.6-9.4l-225-225c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l225 225c12.5 12.5 12.5 32.8 0 45.3-6.3 6.3-14.5 9.4-22.7 9.4z" p-id="8708" fill="#515151"></path><path d="M679.5 905.2c-8.2 0-16.4-3.1-22.6-9.4-12.5-12.5-12.5-32.8 0-45.3l225-225c12.5-12.5 32.8-12.5 45.3 0s12.5 32.8 0 45.3l-225 225c-6.3 6.3-14.5 9.4-22.7 9.4z" p-id="8709" fill="#515151"></path><path d="M448.2 958.3H229.7c-89.3 0-162-72.7-162-162V228.2c0-89.3 72.7-162 162-162h568.1c89.3 0 162 72.7 162 162v208.1c0 17.7-14.3 32-32 32s-32-14.3-32-32V228.2c0-54-44-98-98-98H229.7c-54 0-98 44-98 98v568.1c0 54 44 98 98 98h218.5c17.7 0 32 14.3 32 32s-14.3 32-32 32z" p-id="8710" fill="#515151"></path></svg>
-				导出接口
+				<span class="ms-1 d-none d-sm-inline">导出接口</span>
 			`;
 			break
 	}
@@ -322,8 +434,10 @@ function resetButtonState(btn: HTMLButtonElement, type: 'refresh' | 'export'): v
 function initSwaggerPreview(useExistingData = false): void {
 	basicContainer.innerHTML = '';
 	interfaceContainer.innerHTML = '';
-	selectedApis = {};
+	selectedApiCount = 0;
+	selectedApiMapByController = new Map();
 	existingApiData = {};
+	existingApiSetByController = new Map();
 	updateSelectedCount();
 
 	try {
@@ -336,6 +450,7 @@ function initSwaggerPreview(useExistingData = false): void {
 		if (!spec) {
 			throw new Error('swaggerJson is empty');
 		}
+		controllerTotalCountByTag = computeControllerTotalCounts(spec);
 		// 1. 渲染基础信息
 		renderBasicInfo(basicContent);
 
@@ -346,6 +461,7 @@ function initSwaggerPreview(useExistingData = false): void {
 		const tags = spec.tags || [];
 		if (tags && tags.length) {
 			renderControllerList(tags);
+			updateControllerStats();
 		} else {
 			interfaceContainer.innerHTML = `
 				<div class="alert alert-info">
@@ -451,7 +567,7 @@ function setupBasePathEdit(content: any): void {
 	});
 }
 
-function renderControllerList(tags: any[]): void {
+function renderControllerList(tags: SwaggerTag[]): void {
 	// 1. 按首字母排序 (支持中文)
 	const sortedTags = [...tags].sort((a, b) =>
 		a.name.localeCompare(b.name, "zh-CN")
@@ -466,18 +582,19 @@ function renderControllerList(tags: any[]): void {
 						<div class="accordion-item" data-controller-name="${escapeHtml(tag.name)}" data-controller-desc="${escapeHtml(tag.description || '')}">
 							<h2 class="accordion-header">
 								<button class="accordion-button ${index > 0 ? "collapsed" : ""}"
-										type="button"
-										data-bs-toggle="collapse"
-										data-bs-target="#collapse${index}"
-										aria-expanded="${index === 0}">
-									<strong>${escapeHtml(tag.name)}</strong>
-									${
-										tag.description
-											? `<span class="text-muted ms-2">${escapeHtml(
-													tag.description
-												)}</span>`
-											: ""
-									}
+									type="button"
+									data-bs-toggle="collapse"
+									data-bs-target="#collapse${index}"
+									aria-expanded="${index === 0}">
+									<span class="controller-title">
+										<span class="controller-name">${escapeHtml(tag.name)}</span>
+										${
+											tag.description
+												? `<span class="controller-desc">${escapeHtml(tag.description)}</span>`
+												: ""
+										}
+									</span>
+									<span class="badge bg-light text-dark border controller-stats controller-stats-fixed" data-tag="${escapeHtml(tag.name)}"></span>
 								</button>
 							</h2>
 							<div id="collapse${index}"
@@ -502,53 +619,69 @@ function renderControllerList(tags: any[]): void {
 	// 3. 控制器级别筛选（使用顶部工具栏输入框，不随列表滚动）
 	const cSearchInput = document.querySelector<HTMLInputElement>('#controller-toolbar .controller-search-input');
 	const cSearchClear = document.querySelector<HTMLButtonElement>('#controller-toolbar .controller-search-clear');
+	const controllerItems = Array.from(
+		interfaceContainer.querySelectorAll<HTMLElement>('#controllerAccordion .accordion-item')
+	);
 	function applyControllerFilter(q: string): void {
 		const kw = (q || '').trim().toLowerCase();
-		interfaceContainer.querySelectorAll<HTMLElement>('#controllerAccordion .accordion-item').forEach((item) => {
+		controllerItems.forEach((item) => {
 			const name = (item.getAttribute('data-controller-name') || '').toLowerCase();
 			const desc = (item.getAttribute('data-controller-desc') || '').toLowerCase();
 			item.style.display = kw === '' || name.includes(kw) || desc.includes(kw) ? '' : 'none';
 		});
 	}
 	if (cSearchInput && cSearchClear) {
-		cSearchInput.addEventListener('input', () => applyControllerFilter(cSearchInput.value));
-		cSearchClear.addEventListener('click', () => {
+		if (controllerSearchInputListener) {
+			cSearchInput.removeEventListener('input', controllerSearchInputListener);
+		}
+		if (controllerSearchClearListener) {
+			cSearchClear.removeEventListener('click', controllerSearchClearListener);
+		}
+
+		const debouncedApply = debounce(() => applyControllerFilter(cSearchInput.value), 120);
+		controllerSearchInputListener = () => debouncedApply();
+		controllerSearchClearListener = () => {
 			cSearchInput.value = '';
 			applyControllerFilter('');
-		});
+		};
+		cSearchInput.addEventListener('input', controllerSearchInputListener);
+		cSearchClear.addEventListener('click', controllerSearchClearListener);
 	}
 
-	// 4. 添加展开事件监听
-	document.querySelectorAll<HTMLButtonElement>(".accordion-button").forEach((btn) => {
-		btn.addEventListener("click", function (this: HTMLButtonElement, e: Event) {
-			e.stopPropagation(); // 阻止事件冒泡
-			const accordionItem = this.closest<HTMLElement>('.accordion-item');
+	// 4. 添加展开事件监听（事件委托）
+	const controllerAccordion = document.getElementById('controllerAccordion') as (HTMLElement & { dataset: DOMStringMap }) | null;
+	if (controllerAccordion && controllerAccordion.dataset.delegated !== '1') {
+		controllerAccordion.dataset.delegated = '1';
+		controllerAccordion.addEventListener('click', (e: MouseEvent) => {
+			const target = e.target as HTMLElement | null;
+			if (!target) return;
+			const btn = target.closest('.accordion-button') as HTMLButtonElement | null;
+			if (!btn) return;
+			e.stopPropagation();
+			const accordionItem = btn.closest<HTMLElement>('.accordion-item');
 			if (!accordionItem) return;
 			const accordionBody = accordionItem.querySelector<HTMLElement>('.accordion-body');
 			const collapseEl = accordionItem.querySelector<HTMLElement>('.accordion-collapse');
 			if (!accordionBody || !collapseEl) return;
 			const tagName = accordionBody.dataset.tag as string;
 
-			// 仅在首次展开时加载
 			if (!accordionBody.querySelector('.list-group')) {
 				loadTagApis(tagName);
 			} else if (existingApiData && Object.keys(existingApiData).length > 0) {
 				const normalizedTagName = normalizeControllerName(tagName);
-				Object.entries(existingApiData).forEach(([controllerName, apis]) => {
-					if (normalizedTagName === controllerName) {
-						markApiItemsInController(accordionBody, apis);
-					}
-				});
+				const set = existingApiSetByController.get(normalizedTagName);
+				if (set) {
+					markApiItemsInControllerWithSet(accordionBody, set);
+				}
 			}
 
-			// 等待折叠面板完成展开后再对齐，避免高度变化导致偏差
 			const onShown = () => {
 				scrollToTopInContainer(interfaceContainerCard, accordionItem);
 				collapseEl.removeEventListener('shown.bs.collapse', onShown);
 			};
 			collapseEl.addEventListener('shown.bs.collapse', onShown);
 		});
-	});
+	}
 
 	// 5. 主动触发第一个按钮的点击事件
 	addGlobalTimer(setTimeout(() => {
@@ -615,6 +748,13 @@ function loadTagApis(tagName: string): void {
 		return;
 	}
 
+	const apiByKey = new Map<string, ApiItem>();
+	const apiByOperationId = new Map<string, ApiItem>();
+	apiList.forEach((api) => {
+		apiByKey.set(buildApiKey(api.path, api.method), api);
+		apiByOperationId.set(api.operationId, api);
+	});
+
 	// 渲染API列表
 	accordionBodyEl.innerHTML = `
 		<div class="d-flex justify-content-end align-items-center mb-2 gap-2">
@@ -629,9 +769,10 @@ function loadTagApis(tagName: string): void {
 				<button type="button" class="btn btn-outline-secondary deselect-all-btn">取消全选</button>
 			</div>
 		</div>
+		<div class="d-flex justify-content-end flex-wrap gap-2 mb-2 controller-stats-bar" data-tag="${escapeHtml(tagName)}"></div>
 		<div class="list-group list-group-flush">
 			${apiList.map(api => `
-				<div class="list-group-item border-0 px-0 py-2" data-path="${escapeHtml(api.path)}" data-name="${escapeHtml(api.summary || '')}">
+				<div class="list-group-item border-0 px-0 py-2" data-path="${escapeHtml(api.path)}" data-name="${escapeHtml(api.summary || '')}" data-method="${escapeHtml(api.method)}">
 					<div class="api-collapse-header d-flex justify-content-between align-items-stretch">
 						<a href="#${api.operationId}"
 							class="api-item-link text-decoration-none text-reset"
@@ -672,235 +813,251 @@ function loadTagApis(tagName: string): void {
 		</div>
 	`;
 
-	// API的点击事件
-	accordionBodyEl.querySelectorAll<HTMLAnchorElement>('.api-item-link').forEach((link) => {
-		link.addEventListener('click', function (this: HTMLAnchorElement, e: Event) {
-			const apiId = this.getAttribute('href')?.substring(1) || '';
-			const detailPanel = document.querySelector<HTMLElement>(`[data-api-id="${apiId}"]`);
-			if (!detailPanel) return;
-
-			// 通过data属性获取原始数据
-			const apiData = apiList.find((api) => api.operationId === apiId);
-
-			if (apiData) {
-				// 1. 渲染请求参数
-				let parametersHtml = '';
-				if (apiData.parameters && apiData.parameters.length) {
-					parametersHtml = `
-						<div class="mb-4">
-							<h6 class="border-bottom pb-2">📤 请求参数</h6>
-							${renderParameters(apiData.parameters, definitions)}
-						</div>
-					`;
-				}
-
-				// 2. 渲染响应参数
-				let responsesHtml = '';
-				if (apiData.responses) {
-					responsesHtml = `
-						<div class="mt-4">
-							<h6 class="border-bottom pb-2">📥 响应结构</h6>
-							${renderResponses(apiData.responses, definitions)}
-						</div>
-					`;
-				}
-
-				detailPanel.innerHTML = parametersHtml + responsesHtml;
-			}
-		});
-	});
-
-	// DTO的点击事件
-	accordionBodyEl.addEventListener('click', function (e: MouseEvent) {
-		const target = e.target as HTMLElement | null;
-		if (!target) return;
-
-		// 处理 DTO 引用点击（叠加模式）
-		if (target.matches('.dto-ref')) {
-			e.preventDefault();
-			const refKey = target.dataset.ref || '';
-			const modelDef = target.closest<HTMLElement>('.model-definition');
-			const container = modelDef?.querySelector<HTMLElement>('.dto-ref-container');
-			if (!container) return;
-
-			// 检查是否已存在完全相同的 DTO 内容
-			const newContent = renderModel(refKey, definitions);
-			if (isSameDtoContent(refKey, newContent, container)) {
-				target.classList.remove('active');
-				return;
-			}
-
-			// 检查是否已存在当前 DTO（无论内容是否一致）
-			const existingDetails = container.querySelector<HTMLElement>(`.dto-ref-details[data-ref="${refKey}"]`);
-			if (existingDetails) {
-				existingDetails.remove();
-				target.classList.remove('active');
-				return;
-			}
-
-			// 渲染新的 DTO
-			const details = document.createElement('div');
-			details.className = 'dto-ref-details';
-			details.dataset.ref = refKey;
-			details.innerHTML = newContent;
-
-			container.appendChild(details);
-			target.classList.add('active');
-		}
-
-		// 处理请求参数的 DTO 点击
-		if (target.matches('.request-dto-toggle')) {
-			e.preventDefault();
-			const refKey = target.dataset.ref || '';
-			const table = target.closest<HTMLElement>('.request-parameters-table');
-			const container = table?.nextElementSibling as HTMLElement | null;
-			if (!container) return;
-
-			const existingDetails = container.querySelector<HTMLElement>(`.request-dto-details[data-ref="${refKey}"]`);
-			if (existingDetails) {
-				existingDetails.remove();
-				target.classList.remove('active');
-				return;
-			}
-
-			const allDetails = container.querySelectorAll<HTMLElement>('.request-dto-details');
-			allDetails.forEach((detail) => detail.remove());
-
-			const details = document.createElement('div');
-			details.className = 'request-dto-details';
-			details.dataset.ref = refKey;
-			details.innerHTML = renderModel(refKey, definitions);
-
-			container.appendChild(details);
-			target.classList.add('active');
-		}
-
-		// 处理响应结构的 DTO 点击
-		if (target.matches('.dto-toggle')) {
-			e.preventDefault();
-			const toggle = target;
-			const container = toggle.closest<HTMLElement>('.dto-container');
-			const details = toggle.nextElementSibling as HTMLElement | null;
-			if (!container || !details) return;
-
-			if (details && (details as any).classList.contains('dto-details')) {
-				const dynamicDetails = container.querySelectorAll<HTMLElement>('.dto-details[data-ref]');
-				dynamicDetails.forEach((detail) => detail.remove());
-
-				details.style.display = details.style.display === 'none' ? 'block' : 'none';
-				toggle.classList.toggle('active');
-			}
-		}
-	});
-
-	// 复制API路径
-	accordionBodyEl.querySelectorAll<HTMLElement>('.copy-api-path').forEach((item) => {
-		item.addEventListener('click', function (this: HTMLElement) {
-			const path = this.getAttribute('data-path') || '';
-			try {
-				navigator.clipboard.writeText(path);
-				showToast('API路径已复制！');
-			} catch (error) {
-				showToast('API路径复制失败');
-			}
-		});
-	});
-
-	// 选择API
-	accordionBodyEl.querySelectorAll<HTMLInputElement>('.form-check-input').forEach((item) => {
-		item.addEventListener('change', function (this: HTMLInputElement) {
-			const listItem = this.closest<HTMLElement>('.list-group-item');
-			if (!listItem) return;
-			const apiItemLink = listItem.querySelector<HTMLElement>('.api-item-link');
-			if (!apiItemLink) return;
-			const apiPath = (apiItemLink.querySelector<HTMLElement>('.api-path')?.textContent || '').trim();
-			const methodBadge = apiItemLink.querySelector<HTMLElement>('.badge');
-			const method = methodBadge ? (methodBadge.textContent || '').trim().toLowerCase() : '';
-			const controller = tagName;
-			const apiData = apiList.find((api) => api.path === apiPath && api.method === (method as HttpMethod));
-
-			if (this.checked) {
-				listItem.classList.add('selected-api');
-				if (!selectedApis[controller]) {
-					selectedApis[controller] = [];
-				}
-				// 避免重复添加
-				if (!selectedApis[controller].some((api) => api.path === apiPath && api.method === (method as HttpMethod))) {
-					if (apiData) selectedApis[controller].push({ ...apiData });
-				}
-			} else {
-				listItem.classList.remove('selected-api');
-				if (selectedApis[controller]) {
-					selectedApis[controller] = selectedApis[controller].filter(
-						(api) => !(api.path === apiPath && api.method === (method as HttpMethod))
-					);
-					// 如果该 controller 下已无 API，移除该 controller
-					if (selectedApis[controller].length === 0) {
-						delete selectedApis[controller];
-					}
-				}
-			}
-			// 更新已选接口数量显示
-			updateSelectedCount();
-		});
-	});
-
-	// 全选/取消全选
-	const selectAllBtn = accordionBodyEl.querySelector<HTMLButtonElement>('.select-all-btn');
-	const deselectAllBtn = accordionBodyEl.querySelector<HTMLButtonElement>('.deselect-all-btn');
-	if (selectAllBtn) {
-		selectAllBtn.addEventListener('click', () => {
-			const checkboxes = accordionBodyEl.querySelectorAll<HTMLInputElement>('.form-check-input');
-			checkboxes.forEach((cb) => {
-				if (!cb.checked) {
-					cb.checked = true;
-					cb.dispatchEvent(new Event('change', { bubbles: true }));
-				}
-			});
-		});
-	}
-	if (deselectAllBtn) {
-		deselectAllBtn.addEventListener('click', () => {
-			const checkboxes = accordionBody.querySelectorAll<HTMLInputElement>('.form-check-input');
-			checkboxes.forEach((cb) => {
-				if (cb.checked) {
-					cb.checked = false;
-					cb.dispatchEvent(new Event('change', { bubbles: true }));
-				}
-			});
-		});
-	}
-
-	// 搜索过滤（按接口路径或名称）
-	const searchInput = accordionBodyEl.querySelector<HTMLInputElement>('.api-search-input');
-	const searchClear = accordionBodyEl.querySelector<HTMLButtonElement>('.api-search-clear');
+	const apiListItems = Array.from(accordionBodyEl.querySelectorAll<HTMLElement>('.list-group-item'));
 	function applyFilter(q: string) {
 		const kw = (q || '').trim().toLowerCase();
-		accordionBodyEl.querySelectorAll<HTMLElement>('.list-group-item').forEach((li) => {
+		apiListItems.forEach((li) => {
 			const path = (li.dataset.path || '').toLowerCase();
 			const name = (li.dataset.name || '').toLowerCase();
 			li.style.display = kw === '' || path.includes(kw) || name.includes(kw) ? '' : 'none';
 		});
 	}
-	if (searchInput) {
-		searchInput.addEventListener('input', () => applyFilter(searchInput.value));
-	}
-	if (searchClear) {
-		searchClear.addEventListener('click', () => {
-			if (searchInput) searchInput.value = '';
-			applyFilter('');
+
+	const apiDelegationEl = accordionBodyEl as HTMLElement & { dataset: DOMStringMap };
+	if (apiDelegationEl.dataset.delegated !== '1') {
+		apiDelegationEl.dataset.delegated = '1';
+		let apiSearchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+		apiDelegationEl.addEventListener('click', (e: MouseEvent) => {
+			const target = e.target as HTMLElement | null;
+			if (!target) return;
+
+			const apiLink = target.closest('.api-item-link') as HTMLAnchorElement | null;
+			if (apiLink) {
+				const apiId = apiLink.getAttribute('href')?.substring(1) || '';
+				const detailPanel = accordionBodyEl.querySelector<HTMLElement>(`[data-api-id="${apiId}"]`);
+				if (!detailPanel) return;
+				const apiData = apiByOperationId.get(apiId);
+				if (apiData) {
+					let parametersHtml = '';
+					if (apiData.parameters && apiData.parameters.length) {
+						parametersHtml = `
+							<div class="mb-4">
+								<h6 class="border-bottom pb-2">📤 请求参数</h6>
+								${renderParameters(apiData.parameters, definitions)}
+							</div>
+						`;
+					}
+
+					let responsesHtml = '';
+					if (apiData.responses) {
+						responsesHtml = `
+							<div class="mt-4">
+								<h6 class="border-bottom pb-2">📥 响应结构</h6>
+								${renderResponses(apiData.responses, definitions)}
+							</div>
+						`;
+					}
+
+					detailPanel.innerHTML = parametersHtml + responsesHtml;
+				}
+				return;
+			}
+
+			const copyBtn = target.closest('.copy-api-path') as HTMLElement | null;
+			if (copyBtn) {
+				const path = copyBtn.getAttribute('data-path') || '';
+				try {
+					navigator.clipboard.writeText(path);
+					showToast('API路径已复制！');
+				} catch (error) {
+					showToast('API路径复制失败');
+				}
+				return;
+			}
+
+			const selectAllBtn = target.closest('.select-all-btn') as HTMLButtonElement | null;
+			if (selectAllBtn) {
+				const checkboxes = accordionBodyEl.querySelectorAll<HTMLInputElement>('.form-check-input');
+				checkboxes.forEach((cb) => {
+					if (!cb.checked) {
+						cb.checked = true;
+						cb.dispatchEvent(new Event('change', { bubbles: true }));
+					}
+				});
+				return;
+			}
+
+			const deselectAllBtn = target.closest('.deselect-all-btn') as HTMLButtonElement | null;
+			if (deselectAllBtn) {
+				const checkboxes = accordionBodyEl.querySelectorAll<HTMLInputElement>('.form-check-input');
+				checkboxes.forEach((cb) => {
+					if (cb.checked) {
+						cb.checked = false;
+						cb.dispatchEvent(new Event('change', { bubbles: true }));
+					}
+				});
+				return;
+			}
+
+			const searchClearBtn = target.closest('.api-search-clear') as HTMLButtonElement | null;
+			if (searchClearBtn) {
+				const searchInput = accordionBodyEl.querySelector<HTMLInputElement>('.api-search-input');
+				if (searchInput) searchInput.value = '';
+				applyFilter('');
+				return;
+			}
+
+			const toggleDetailsBtn = target.closest('.toggle-details') as HTMLButtonElement | null;
+			if (toggleDetailsBtn) {
+				e.preventDefault();
+				const objectTypeEl = toggleDetailsBtn.closest<HTMLElement>('.object-type');
+				const detailsEl = objectTypeEl?.querySelector<HTMLElement>('.object-details');
+				if (!detailsEl) return;
+				const isHidden = detailsEl.style.display === 'none' || detailsEl.style.display === '';
+				detailsEl.style.display = isHidden ? 'block' : 'none';
+				toggleDetailsBtn.textContent = isHidden ? '▼' : '▶';
+				return;
+			}
+
+			const dtoRefEl = target.closest('.dto-ref') as HTMLElement | null;
+			if (dtoRefEl) {
+				e.preventDefault();
+				const refKey = dtoRefEl.dataset.ref || '';
+				const modelDef = dtoRefEl.closest<HTMLElement>('.model-definition');
+				const container = modelDef?.querySelector<HTMLElement>('.dto-ref-container');
+				if (!container) return;
+
+				const newContent = renderModel(refKey, definitions);
+				if (isSameDtoContent(refKey, newContent, container)) {
+					dtoRefEl.classList.remove('active');
+					return;
+				}
+
+				const existingDetails = container.querySelector<HTMLElement>(`.dto-ref-details[data-ref="${refKey}"]`);
+				if (existingDetails) {
+					existingDetails.remove();
+					dtoRefEl.classList.remove('active');
+					return;
+				}
+
+				const details = document.createElement('div');
+				details.className = 'dto-ref-details';
+				details.dataset.ref = refKey;
+				details.innerHTML = newContent;
+
+				container.appendChild(details);
+				dtoRefEl.classList.add('active');
+				return;
+			}
+
+			const reqDtoToggleEl = target.closest('.request-dto-toggle') as HTMLElement | null;
+			if (reqDtoToggleEl) {
+				e.preventDefault();
+				const refKey = reqDtoToggleEl.dataset.ref || '';
+				const table = reqDtoToggleEl.closest<HTMLElement>('.request-parameters-table');
+				const container = table?.nextElementSibling as HTMLElement | null;
+				if (!container) return;
+
+				const existingDetails = container.querySelector<HTMLElement>(`.request-dto-details[data-ref="${refKey}"]`);
+				if (existingDetails) {
+					existingDetails.remove();
+					reqDtoToggleEl.classList.remove('active');
+					return;
+				}
+
+				const allDetails = container.querySelectorAll<HTMLElement>('.request-dto-details');
+				allDetails.forEach((detail) => detail.remove());
+
+				const details = document.createElement('div');
+				details.className = 'request-dto-details';
+				details.dataset.ref = refKey;
+				details.innerHTML = renderModel(refKey, definitions);
+
+				container.appendChild(details);
+				reqDtoToggleEl.classList.add('active');
+				return;
+			}
+
+			const dtoToggleEl = target.closest('.dto-toggle') as HTMLElement | null;
+			if (dtoToggleEl) {
+				e.preventDefault();
+				const container = dtoToggleEl.closest<HTMLElement>('.dto-container');
+				const details = dtoToggleEl.nextElementSibling as HTMLElement | null;
+				if (!container || !details) return;
+
+				if (details && (details as any).classList.contains('dto-details')) {
+					const dynamicDetails = container.querySelectorAll<HTMLElement>('.dto-details[data-ref]');
+					dynamicDetails.forEach((detail) => detail.remove());
+
+					details.style.display = details.style.display === 'none' ? 'block' : 'none';
+					dtoToggleEl.classList.toggle('active');
+				}
+				return;
+			}
+		});
+
+		apiDelegationEl.addEventListener('change', (e: Event) => {
+			const target = e.target as HTMLElement | null;
+			if (!target) return;
+			const checkbox = target.closest('.form-check-input') as HTMLInputElement | null;
+			if (!checkbox) return;
+
+			const listItem = checkbox.closest<HTMLElement>('.list-group-item');
+			if (!listItem) return;
+			const apiPath = (listItem.dataset.path || '').trim();
+			const apiMethod = (listItem.getAttribute('data-method') || '').trim().toLowerCase();
+			if (!apiPath || !apiMethod) return;
+			const controller = tagName;
+			const key = buildApiKey(apiPath, apiMethod);
+			const apiData = apiByKey.get(key);
+
+			if (checkbox.checked) {
+				listItem.classList.add('selected-api');
+				let controllerMap = selectedApiMapByController.get(controller);
+				if (!controllerMap) {
+					controllerMap = new Map();
+					selectedApiMapByController.set(controller, controllerMap);
+				}
+				if (!controllerMap.has(key)) {
+					if (apiData) {
+						controllerMap.set(key, { ...apiData });
+						selectedApiCount++;
+					}
+				}
+			} else {
+				listItem.classList.remove('selected-api');
+				const controllerMap = selectedApiMapByController.get(controller);
+				if (controllerMap && controllerMap.has(key)) {
+					controllerMap.delete(key);
+					selectedApiCount = Math.max(0, selectedApiCount - 1);
+					if (controllerMap.size === 0) {
+						selectedApiMapByController.delete(controller);
+					}
+				}
+			}
+			updateSelectedCount();
+			scheduleUpdateControllerStats(controller);
+		});
+
+		apiDelegationEl.addEventListener('input', (e: Event) => {
+			const target = e.target as HTMLElement | null;
+			if (!target) return;
+			const input = target.closest('.api-search-input') as HTMLInputElement | null;
+			if (!input) return;
+			if (apiSearchDebounceTimer) clearTimeout(apiSearchDebounceTimer);
+			apiSearchDebounceTimer = setTimeout(() => applyFilter(input.value), 120);
 		});
 	}
 
 	// 标识当前控制器中的已存在API
 	if (existingApiData && Object.keys(existingApiData).length > 0) {
 		const normalizedTagName = normalizeControllerName(tagName);
-		Object.entries(existingApiData).forEach(([controllerName, apis]) => {
-			if (normalizedTagName === controllerName) {
-				markApiItemsInController(accordionBodyEl, apis);
-			}
-		});
+		const set = existingApiSetByController.get(normalizedTagName);
+		if (set) {
+			markApiItemsInControllerWithSet(accordionBodyEl, set);
+		}
 	}
+	scheduleUpdateControllerStats(tagName);
 }
 
 function isSameDtoContent(refKey: string, newContent: string, container: Element): boolean {
@@ -1148,6 +1305,7 @@ window.addEventListener('message', (event: MessageEvent<any>) => {
 	switch (message.command) {
 		case 'existingApisResponse':
 			existingApiData = message.existingApiData || {};
+			rebuildExistingApiSets();
 			markExistingApis();
 			break;
 		case 'updateSwaggerContent':
@@ -1168,10 +1326,12 @@ window.addEventListener('message', (event: MessageEvent<any>) => {
 			resetButtonState(refreshBtn, 'refresh');
 			break;
 		case 'exportApiSuccess':
+			exportInFlight = false;
 			// 清空选中状态
-			selectedApis = {};
+			selectedApiCount = 0;
+			selectedApiMapByController = new Map();
 			// 取消所有勾选框的选中状态
-			document.querySelectorAll<HTMLInputElement>('.form-check-input:checked').forEach((checkbox) => {
+			interfaceContainer.querySelectorAll<HTMLInputElement>('.form-check-input:checked').forEach((checkbox) => {
 				checkbox.checked = false;
 				const listItem = checkbox.closest<HTMLElement>('.list-group-item');
 				if (listItem) {
@@ -1180,12 +1340,14 @@ window.addEventListener('message', (event: MessageEvent<any>) => {
 			});
 			// 更新已选接口数量显示
 			updateSelectedCount();
+			updateControllerStats();
 			// 重新请求已存在的API列表
 			postToVscode({ command: 'getExistingApis' });
 			showToast('API导出成功！');
 			resetButtonState(exportBtn, 'export');
 			break;
 		case 'exportApiFailed':
+			exportInFlight = false;
 			showToast('API导出失败！');
 			resetButtonState(exportBtn, 'export');
 			break;
@@ -1198,36 +1360,37 @@ function markExistingApis(): void {
 		return;
 	}
 
-	const expandedAccordions = document.querySelectorAll<HTMLElement>('.accordion-collapse.show .accordion-body[data-tag]');
+	const expandedAccordions = interfaceContainer.querySelectorAll<HTMLElement>('.accordion-collapse.show .accordion-body[data-tag]');
 	expandedAccordions.forEach((accordionBody) => {
 		const tagName = accordionBody.getAttribute('data-tag') || '';
 		const normalizedTagName = normalizeControllerName(tagName);
-		Object.entries(existingApiData).forEach(([controllerName, apis]) => {
-			if (normalizedTagName === controllerName) {
-				markApiItemsInController(accordionBody, apis);
-			}
-		});
+		const set = existingApiSetByController.get(normalizedTagName);
+		if (set) {
+			markApiItemsInControllerWithSet(accordionBody, set);
+		}
 	});
 }
 
-// 标记指定控制器中的API项
-function markApiItemsInController(accordionBody: Element, apis: ExistingApi[]): void {
+function markApiItemsInControllerWithSet(accordionBody: Element, existingSet: Set<string>): void {
 	const apiItems = accordionBody.querySelectorAll<HTMLElement>('.list-group-item');
-	apiItems.forEach((item) => item.classList.remove('existing-api'));
-
-	apis.forEach((existingApi) => {
-		apiItems.forEach((item) => {
-			const pathElement = item.querySelector<HTMLElement>('.api-path');
-			const methodElement = item.querySelector<HTMLElement>('.badge');
-			if (!pathElement || !methodElement) return;
-
-			const apiPath = (pathElement.textContent || '').trim();
-			const apiMethod = (methodElement.textContent || '').trim().toLowerCase();
-			if (apiPath === existingApi.path && apiMethod === String(existingApi.method).toLowerCase()) {
-				item.classList.add('existing-api');
-			}
-		});
+	apiItems.forEach((item) => {
+		item.classList.remove('existing-api');
+		const apiPath = (item.dataset.path || '').trim();
+		if (!apiPath) return;
+		const method = (item.getAttribute('data-method') || '').trim().toLowerCase();
+		const apiMethod = method || (item.querySelector<HTMLElement>('.badge')?.textContent || '').trim().toLowerCase();
+		if (!apiMethod) return;
+		if (existingSet.has(buildApiKey(apiPath, apiMethod))) {
+			item.classList.add('existing-api');
+		}
 	});
+}
+
+// 标记指定控制器中的API项（兼容旧调用）
+function markApiItemsInController(accordionBody: Element, apis: ExistingApi[]): void {
+	const set = new Set<string>();
+	(apis || []).forEach((api) => set.add(buildApiKey(api.path, api.method)));
+	markApiItemsInControllerWithSet(accordionBody, set);
 }
 
 // 全局全选和取消全选功能
@@ -1237,6 +1400,7 @@ function setupGlobalSelectButtons(): void {
 
 	let activeTimers: Array<ReturnType<typeof setTimeout>> = [];
 	let isProcessing = false;
+	let lastMarkingTimer: ReturnType<typeof setTimeout> | null = null;
 
 	function clearActiveTimers(): void {
 		activeTimers.forEach((timer) => clearTimeout(timer));
@@ -1346,15 +1510,17 @@ function setupGlobalSelectButtons(): void {
 				if (accordionBody && existingApiData) {
 					const tagName = accordionBody.getAttribute('data-tag');
 					if (tagName) {
-						const markingTimer = setTimeout(() => {
+						if (lastMarkingTimer) {
+							clearTimeout(lastMarkingTimer);
+						}
+						lastMarkingTimer = setTimeout(() => {
 							const normalizedTagName = normalizeControllerName(tagName);
-							Object.entries(existingApiData).forEach(([controllerName, apis]) => {
-								if (normalizedTagName === controllerName) {
-									markApiItemsInController(accordionBody, apis);
-								}
-							});
+							const set = existingApiSetByController.get(normalizedTagName);
+							if (set) {
+								markApiItemsInControllerWithSet(accordionBody, set);
+							}
 						}, 100);
-						addTimer(markingTimer);
+						addTimer(lastMarkingTimer);
 					}
 				}
 			}

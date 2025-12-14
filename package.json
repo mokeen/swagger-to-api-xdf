@@ -3,7 +3,7 @@
   "publisher": "xdf-va",
   "displayName": "Va Swagger to API (Vue2/Vue3)",
   "description": "Generate TypeScript API client code from Swagger 2.0 / OpenAPI 3.x documentation with intelligent type system and incremental updates support. Works with Vue 2, Vue 3, FastAPI, Spring Boot, and any TypeScript + Axios project.",
-  "version": "3.0.4",
+  "version": "3.1.0",
   "packageManager": "yarn@1.22.22",
   "author": "xdf-va",
   "license": "ICT",
@@ -26,7 +26,7 @@
     "onCommand:swagger-to-api.addSwagger",
     "onCommand:swagger-to-api.fixLegacyUids"
   ],
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
@@ -74,7 +74,7 @@
           "dark": "resources/icons/dark/fix-doc-uid-icon.svg"
         }
       }
-    ], 
+    ],
     "menus": {
       "view/title": [
         {
@@ -113,7 +113,7 @@
       "activitybar": [
         {
           "id": "swagger-to-api",
-          "title": "Swagger To Api 2",
+          "title": "Swagger To Api",
           "icon": "resources/icons/menu-icon.svg"
         }
       ]
@@ -132,9 +132,11 @@
     "vscode:prepublish": "yarn run compile:all",
     "build:webviews": "node scripts/build-webviews.mjs",
     "watch:webviews": "node scripts/build-webviews.mjs --watch",
+    "build:extension": "node scripts/build-extension.mjs",
+    "watch:extension": "node scripts/build-extension.mjs --watch",
     "compile": "tsc -p ./",
-    "compile:all": "yarn run build:webviews && tsc -p ./",
-    "watch": "yarn run watch:webviews & tsc -watch -p ./",
+    "compile:all": "yarn run build:webviews && yarn run build:extension && tsc -p ./",
+    "watch": "yarn run watch:webviews & yarn run watch:extension & tsc -watch -p ./",
     "pretest": "yarn run compile && yarn run lint",
     "lint": "eslint src",
     "test": "vscode-test"

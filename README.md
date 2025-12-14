@@ -1,6 +1,6 @@
 # Va Swagger to API (Vue2/Vue3)
 
-![版本](https://img.shields.io/badge/版本-3.0.0-blue.svg)
+![版本](https://img.shields.io/badge/版本-3.1.0-blue.svg)
 ![VS Code](https://img.shields.io/badge/VS%20Code-^1.80.0-brightgreen.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg)
 ![Vue](https://img.shields.io/badge/Vue-2%20%7C%203-brightgreen.svg)
@@ -98,6 +98,41 @@
 1. 点击"预览Swagger文档"
 2. 选择您要生成的 API
 3. 点击"导出选中接口"
+
+## 🧑‍💻 开发与构建（贡献者）
+
+本项目包含两类构建产物：
+
+- 扩展本体：`dist/extension.js`（由 `esbuild` 打包）
+- Webview 资源：`resources/webview/**/**.js`（由 `esbuild` 打包，配合 `*.ejs` / `*.css` 使用）
+
+### 常用脚本
+
+- **开发 watch（推荐）**：
+	- `yarn run watch`
+	- 同时 watch webview 打包、extension bundling 和 `tsc -watch` 类型检查
+
+- **一次性编译（发布/打包前）**：
+	- `yarn run compile:all`
+	- 先构建 webviews 与 extension bundle，再运行 `tsc` 做类型检查
+
+- **仅构建 webviews**：
+	- `yarn run build:webviews`
+	- `yarn run watch:webviews`
+
+- **仅构建 extension bundle**：
+	- `yarn run build:extension`
+	- `yarn run watch:extension`
+
+### 调试
+
+- 直接按 **F5**（Run Extension）启动 Extension Host
+- 调试任务会运行默认 build task（`watch`），确保 `dist/extension.js` 与 webview 产物就绪
+
+### 发布与打包
+
+- `vsce package` / `vsce publish` 会自动触发 `vscode:prepublish`
+- `vscode:prepublish` 会执行 `compile:all`，保证发布包内包含最新的 `dist/**` 与 `resources/**`
 
 ## 📁 生成的文件结构
 

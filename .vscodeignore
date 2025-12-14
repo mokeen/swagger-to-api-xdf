@@ -2,8 +2,15 @@
 .vscode-test/**
 src/**
 webview-src/**
+scripts/**
+out/**
+node_modules/**
+*.vsix
 .gitignore
+.cursorignore
+.nvmrc
 .yarnrc
+yarn.lock
 vsc-extension-quickstart.md
 **/tsconfig.json
 **/eslint.config.mjs

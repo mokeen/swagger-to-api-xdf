@@ -94,7 +94,6 @@ body {
 	font-size: 0.875rem;
 	border: none;
 	transition: all 0.2s;
-	margin-left: 10px;
 	cursor: pointer;
 }
 
@@ -112,6 +111,19 @@ body {
 	transition: transform 0.3s;
 }
 
+@media (max-width: 576px) {
+	#basic-info-card .card-header {
+		gap: 6px !important;
+	}
+	#basic-info-card .right-operate-btn {
+		gap: 6px !important;
+	}
+	#refresh-btn,
+	#export-btn {
+		padding: 0.25rem 0.4rem;
+	}
+}
+
 #export-btn.loading svg {
 	animation: spin 1s linear infinite;
 }
@@ -127,6 +139,61 @@ body {
 
 .accordion-button {
 	font-weight: 500;
+}
+
+.accordion-button {
+	align-items: flex-start;
+}
+
+.accordion-button .controller-title {
+	display: flex;
+	flex: 1 1 auto;
+	min-width: 0;
+	gap: 0.5rem;
+	white-space: nowrap;
+}
+
+.accordion-button .controller-name {
+	font-weight: 600;
+}
+
+.accordion-button .controller-desc {
+	color: #6c757d;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.accordion-button .controller-stats-fixed {
+	flex: 0 0 auto;
+	width: 90px;
+	text-align: center;
+	margin-left: auto;
+}
+
+.accordion-button::after {
+	margin-left: 0.5rem;
+}
+
+@media (max-width: 576px) {
+	#basic-info-card .card-header {
+		white-space: nowrap;
+	}
+	#selected-count {
+		padding: 0.25em 0.45em;
+		font-size: 0.75rem;
+	}
+
+	.accordion-button .controller-title {
+		flex-direction: column;
+		align-items: flex-start;
+		white-space: normal;
+	}
+	.accordion-button .controller-name,
+	.accordion-button .controller-desc {
+		white-space: normal;
+		overflow: visible;
+		text-overflow: clip;
+	}
 }
 
 .accordion-body {
