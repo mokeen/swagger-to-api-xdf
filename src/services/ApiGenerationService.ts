@@ -33,6 +33,18 @@ interface ApiDefinition {
 	tags: string[]; // 标签（用于分组到controller）
 }
 
+class CodeWriter {
+	private readonly _lines: string[] = [];
+
+	public push(...items: string[]): void {
+		this._lines.push(...items);
+	}
+
+	public join(sep: string = "\n"): string {
+		return this._lines.join(sep);
+	}
+}
+
 export class ApiGenerationService {
 	// ============================================================================
 	// 常量定义
@@ -127,6 +139,14 @@ export class ApiGenerationService {
 			const apisContent = fs.readFileSync(apisFilePath, "utf-8");
 			const existingApiData: { [controller: string]: any[] } = {};
 
+			try {
+				const ts = require("typescript");
+				const parsed = this.getExistingApiDataByTsAst(ts, apisContent);
+				if (parsed) {
+					return parsed;
+				}
+			} catch {}
+
 			// 提取控制器和对应的方法（支持类型注解）
 			const controllerRegex =
 				/export const (\w+Controller)(?::\s*Types\.\w+)?\s*=\s*\{([\s\S]*?)\n\};\s*$/gm;
@@ -174,6 +194,220 @@ export class ApiGenerationService {
 			console.error("Error reading existing API data:", error);
 			return {};
 		}
+	}
+
+	private static getExistingApiDataByTsAst(
+		ts: any,
+		apisContent: string
+	): { [controller: string]: any[] } | null {
+		try {
+			const sourceFile = ts.createSourceFile(
+				"apis.ts",
+				apisContent,
+				ts.ScriptTarget.Latest,
+				true,
+				ts.ScriptKind.TS
+			);
+
+			const existingApiData: { [controller: string]: any[] } = {};
+
+			for (const stmt of sourceFile.statements) {
+				if (!ts.isVariableStatement(stmt)) continue;
+				if (!stmt.modifiers?.some((m: any) => m.kind === ts.SyntaxKind.ExportKeyword)) continue;
+
+				for (const decl of stmt.declarationList.declarations) {
+					if (!ts.isIdentifier(decl.name)) continue;
+					const controllerName = decl.name.text;
+					if (!controllerName || !/Controller$/.test(controllerName)) continue;
+					if (!decl.initializer) continue;
+					const init = this.unwrapTsExpression(ts, decl.initializer);
+					if (!init || !ts.isObjectLiteralExpression(init)) continue;
+
+					const tagName =
+						controllerName.charAt(0).toUpperCase() + controllerName.slice(1);
+					const methods: any[] = [];
+
+					for (const prop of init.properties) {
+						const extractedMethod = this.extractExistingApiMethodFromControllerProp(
+							ts,
+							sourceFile,
+							prop
+						);
+						if (!extractedMethod) continue;
+						const { methodName, extracted } = extractedMethod;
+						if (!extracted) continue;
+
+						const apiPath = extracted.pathTemplate.replace("${basePath}", "");
+						const originalOperationId = this.parseMethodNameToOperationId(
+							methodName,
+							apiPath,
+							extracted.httpMethod
+						);
+
+						methods.push({
+							operationId: originalOperationId,
+							path: apiPath,
+							method: extracted.httpMethod,
+							summary: originalOperationId,
+						});
+					}
+
+					if (methods.length > 0) {
+						existingApiData[tagName] = methods;
+					}
+				}
+			}
+
+			return Object.keys(existingApiData).length > 0 ? existingApiData : null;
+		} catch {
+			return null;
+		}
+	}
+
+	private static unwrapTsExpression(ts: any, expr: any): any {
+		let current = expr;
+		while (current) {
+			if (ts.isParenthesizedExpression(current)) {
+				current = current.expression;
+				continue;
+			}
+			if (ts.isAsExpression(current)) {
+				current = current.expression;
+				continue;
+			}
+			if (ts.isTypeAssertionExpression(current)) {
+				current = current.expression;
+				continue;
+			}
+			if (ts.isNonNullExpression(current)) {
+				current = current.expression;
+				continue;
+			}
+			if (typeof ts.isSatisfiesExpression === 'function' && ts.isSatisfiesExpression(current)) {
+				current = current.expression;
+				continue;
+			}
+			break;
+		}
+		return current;
+	}
+
+	private static extractExistingApiMethodFromControllerProp(
+		ts: any,
+		sourceFile: any,
+		prop: any
+	): { methodName: string; extracted: { pathTemplate: string; httpMethod: string } } | null {
+		const getNameText = (nameNode: any): string | null => {
+			if (!nameNode) return null;
+			if (ts.isIdentifier(nameNode)) return nameNode.text;
+			if (ts.isStringLiteralLike(nameNode)) return nameNode.text;
+			if (ts.isNumericLiteral(nameNode)) return String(nameNode.text);
+			return null;
+		};
+
+		if (ts.isMethodDeclaration(prop)) {
+			if (!prop.modifiers?.some((m: any) => m.kind === ts.SyntaxKind.AsyncKeyword)) return null;
+			if (!prop.body) return null;
+			const methodName = getNameText(prop.name);
+			if (!methodName) return null;
+			const extracted = this.extractPathAndHttpMethodFromMethodBody(ts, sourceFile, prop.body);
+			if (!extracted) return null;
+			return { methodName, extracted };
+		}
+
+		if (ts.isPropertyAssignment(prop)) {
+			const methodName = getNameText(prop.name);
+			if (!methodName) return null;
+			const init = this.unwrapTsExpression(ts, prop.initializer);
+			if (!init) return null;
+
+			if (ts.isArrowFunction(init)) {
+				if (!init.modifiers?.some((m: any) => m.kind === ts.SyntaxKind.AsyncKeyword)) return null;
+				if (!ts.isBlock(init.body)) return null;
+				const extracted = this.extractPathAndHttpMethodFromMethodBody(ts, sourceFile, init.body);
+				if (!extracted) return null;
+				return { methodName, extracted };
+			}
+
+			if (ts.isFunctionExpression(init)) {
+				if (!init.modifiers?.some((m: any) => m.kind === ts.SyntaxKind.AsyncKeyword)) return null;
+				if (!init.body) return null;
+				const extracted = this.extractPathAndHttpMethodFromMethodBody(ts, sourceFile, init.body);
+				if (!extracted) return null;
+				return { methodName, extracted };
+			}
+		}
+
+		return null;
+	}
+
+	private static extractPathAndHttpMethodFromMethodBody(
+		ts: any,
+		sourceFile: any,
+		body: any
+	): { pathTemplate: string; httpMethod: string } | null {
+		let pathTemplate: string | null = null;
+		let httpMethod: string | null = null;
+
+		const visit = (node: any): void => {
+			if (pathTemplate && httpMethod) return;
+
+			if (
+				ts.isVariableDeclaration(node) &&
+				ts.isIdentifier(node.name) &&
+				node.name.text === "path" &&
+				node.initializer
+			) {
+				const init = node.initializer;
+				if (ts.isNoSubstitutionTemplateLiteral(init)) {
+					pathTemplate = init.text;
+				} else {
+					const text = init.getText(sourceFile);
+					if (text.startsWith("`") && text.endsWith("`")) {
+						pathTemplate = text.slice(1, -1);
+					}
+				}
+			}
+
+			if (ts.isCallExpression(node)) {
+				const expr = node.expression;
+				if (
+					ts.isPropertyAccessExpression(expr) &&
+					ts.isIdentifier(expr.expression) &&
+					expr.expression.text === "$http" &&
+					expr.name.text === "run"
+				) {
+					const args = node.arguments || [];
+					const pathArg = args[0];
+					if (!pathTemplate && pathArg) {
+						const unwrappedPathArg = this.unwrapTsExpression(ts, pathArg);
+						if (unwrappedPathArg) {
+							if (ts.isNoSubstitutionTemplateLiteral(unwrappedPathArg)) {
+								pathTemplate = unwrappedPathArg.text;
+							} else if (ts.isStringLiteralLike(unwrappedPathArg)) {
+								pathTemplate = unwrappedPathArg.text;
+							} else {
+								const text = unwrappedPathArg.getText(sourceFile);
+								if (text.startsWith("`") && text.endsWith("`")) {
+									pathTemplate = text.slice(1, -1);
+								}
+							}
+						}
+					}
+					const methodArg = args[1];
+					if (methodArg && ts.isStringLiteralLike(methodArg)) {
+						httpMethod = methodArg.text;
+					}
+				}
+			}
+
+			ts.forEachChild(node, visit);
+		};
+
+		visit(body);
+
+		if (!pathTemplate || !httpMethod) return null;
+		return { pathTemplate, httpMethod };
 	}
 
 	/**
@@ -578,7 +812,7 @@ export class ApiGenerationService {
 	 * 生成types.ts内容
 	 */
 	private static renderTypes(spec: any, mergedApiData: any): string {
-		const lines: string[] = [];
+		const lines = new CodeWriter();
 		lines.push("/* eslint-disable */");
 		lines.push("");
 		lines.push("import { AxiosRequestConfig } from 'axios';");
@@ -1586,7 +1820,7 @@ export class ApiGenerationService {
 	 * 生成apis.ts内容
 	 */
 	private static renderApis(mergedApiData: any, spec: any): string {
-		const lines: string[] = [];
+		const lines = new CodeWriter();
 		lines.push(`/* eslint-disable */`);
 		lines.push(``);
 		lines.push(`import type { AxiosRequestConfig } from 'axios';`);
@@ -2003,7 +2237,7 @@ export class ApiGenerationService {
 	 * 生成index.ts文件内容
 	 */
 	private static generateIndexContent(docName: string): string {
-		const lines: string[] = [];
+		const lines = new CodeWriter();
 		lines.push("/* eslint-disable */");
 		lines.push(``);
 		lines.push(`import * as APIs from './apis';`);

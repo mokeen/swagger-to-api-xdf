@@ -258,7 +258,12 @@ function updateControllerStats(tagName?: string): void {
 		interfaceContainer
 			.querySelectorAll<HTMLElement>(`.controller-stats[data-tag="${CSS.escape(t)}"]`)
 			.forEach((el) => {
-				el.textContent = `已选 ${selected}/${total}`;
+				const totalEl = el.querySelector<HTMLElement>('.controller-stats-total');
+				const selectedEl = el.querySelector<HTMLElement>('.controller-stats-selected');
+				const existingEl = el.querySelector<HTMLElement>('.controller-stats-existing');
+				if (totalEl) totalEl.textContent = String(total);
+				if (selectedEl) selectedEl.textContent = String(selected);
+				if (existingEl) existingEl.textContent = String(existing);
 			});
 
 		interfaceContainer
@@ -594,7 +599,11 @@ function renderControllerList(tags: SwaggerTag[]): void {
 												: ""
 										}
 									</span>
-									<span class="badge bg-light text-dark border controller-stats controller-stats-fixed" data-tag="${escapeHtml(tag.name)}"></span>
+									<span class="controller-stats controller-stats-fixed" data-tag="${escapeHtml(tag.name)}">
+										<span class="badge bg-light text-dark border controller-stats-total"></span>
+										<span class="badge bg-primary controller-stats-selected"></span>
+										<span class="badge bg-success controller-stats-existing"></span>
+									</span>
 								</button>
 							</h2>
 							<div id="collapse${index}"

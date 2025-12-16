@@ -165,9 +165,21 @@ body {
 
 .accordion-button .controller-stats-fixed {
 	flex: 0 0 auto;
-	width: 90px;
-	text-align: center;
+	width: auto;
+	text-align: right;
 	margin-left: auto;
+}
+
+.accordion-button .controller-stats-fixed {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+}
+
+.accordion-button .controller-stats-fixed .badge {
+	padding: 0.25em 0.45em;
+	font-size: 0.75rem;
+	line-height: 1;
 }
 
 .accordion-button::after {
@@ -181,6 +193,11 @@ body {
 	#selected-count {
 		padding: 0.25em 0.45em;
 		font-size: 0.75rem;
+	}
+
+	.accordion-button .controller-stats-fixed .badge {
+		padding: 0.2em 0.35em;
+		font-size: 0.7rem;
 	}
 
 	.accordion-button .controller-title {
