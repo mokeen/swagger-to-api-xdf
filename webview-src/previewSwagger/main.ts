@@ -1079,7 +1079,7 @@ function isSameDtoContent(refKey: string, newContent: string, container: Element
 
 function renderParameters(parameters: SwaggerParameter[], definitions: SwaggerDefinitions): string {
 	return `
-		<table class="table table-sm table-bordered text-center request-parameters-table">
+		<table class="table table-sm table-bordered text-center request-parameters-table swagger-table">
 			<thead class="table-light">
 				<tr>
 					<th width="15%">参数位置</th>
@@ -1186,7 +1186,7 @@ function renderModel(modelName: string, definitions: SwaggerDefinitions): string
 				<strong>${escapeHtml(modelName)}</strong>
 				${model.description ? `<div class="text-muted">${escapeHtml(model.description)}</div>` : ''}
 			</div>
-			<table class="model-properties table table-sm">
+			<table class="model-properties table table-sm swagger-table">
 				${model.properties
 					? Object.entries(model.properties as Record<string, SwaggerSchema>)
 						.map(([name, prop]) => `
@@ -1260,7 +1260,7 @@ function renderProperties(
 	if (!properties) return '';
 	const req = Array.isArray(required) ? required : [];
 	return `
-		<table class="table table-sm mb-0">
+		<table class="table table-sm mb-0 swagger-table">
 			<tbody>
 				${Object.entries(properties)
 					.map(([name, prop]) => {

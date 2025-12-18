@@ -1,6 +1,6 @@
 # Va Swagger to API (Vue2/Vue3)
 
-![版本](https://img.shields.io/badge/版本-3.2.0-blue.svg)
+![版本](https://img.shields.io/badge/版本-3.2.1-blue.svg)
 ![VS Code](https://img.shields.io/badge/VS%20Code-^1.80.0-brightgreen.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg)
 ![Vue](https://img.shields.io/badge/Vue-2%20%7C%203-brightgreen.svg)
@@ -182,7 +182,7 @@ src/services/
 
 需要在项目中创建一个 `request.ts` 文件，导出 `$http` 对象，提供 `run` 方法用于发送请求。
 
-#### request 模板导出（v3.2.0）
+#### request 模板导出（v3.2.0+）
 
 在 Swagger 预览页点击“导出选中接口”时，扩展会提示你是否同时导出 request 模板：
 

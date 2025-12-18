@@ -298,6 +298,26 @@ a:focus {
 .api-path {
 	word-break: break-all;
 }
+
+.swagger-table {
+	width: 100%;
+	table-layout: fixed;
+}
+
+.swagger-table td,
+.swagger-table th {
+	word-break: break-word;
+	overflow-wrap: anywhere;
+}
+
+.swagger-table td code,
+.swagger-table th code,
+.swagger-table .font-monospace {
+	white-space: normal;
+	word-break: break-word;
+	overflow-wrap: anywhere;
+}
+
 code {
 	background-color: #ebebeb;
 	padding: 2px 5px;
