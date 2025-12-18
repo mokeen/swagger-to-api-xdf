@@ -3,7 +3,7 @@
   "publisher": "xdf-va",
   "displayName": "Va Swagger to API (Vue2/Vue3)",
   "description": "Generate TypeScript API client code from Swagger 2.0 / OpenAPI 3.x documentation with intelligent type system and incremental updates support. Works with Vue 2, Vue 3, FastAPI, Spring Boot, and any TypeScript + Axios project.",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "packageManager": "yarn@1.22.22",
   "author": "xdf-va",
   "license": "ICT",
@@ -24,7 +24,8 @@
   ],
   "activationEvents": [
     "onCommand:swagger-to-api.addSwagger",
-    "onCommand:swagger-to-api.fixLegacyUids"
+    "onCommand:swagger-to-api.fixLegacyUids",
+    "onCommand:swagger-to-api.resetRequestTemplateChoice"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -73,6 +74,15 @@
           "light": "resources/icons/light/fix-doc-uid-icon.svg",
           "dark": "resources/icons/dark/fix-doc-uid-icon.svg"
         }
+      },
+      {
+        "command": "swagger-to-api.resetRequestTemplateChoice",
+        "title": "重置 request 导出选择（重新弹窗）",
+        "icon": {
+          "light": "resources/icons/light/remove-cache-icon.svg",
+          "dark": "resources/icons/dark/remove-cache-icon.svg"
+        },
+        "category": "Swagger to API"
       }
     ],
     "menus": {
@@ -84,6 +94,11 @@
         },
         {
           "command": "swagger-to-api.openAddSwagger",
+          "group": "navigation",
+          "when": "view == swaggerExplorer"
+        },
+        {
+          "command": "swagger-to-api.resetRequestTemplateChoice",
           "group": "navigation",
           "when": "view == swaggerExplorer"
         }
@@ -121,7 +136,7 @@
     "views": {
       "swagger-to-api": [
         {
-					"icon": "",
+          "icon": "",
           "id": "swaggerExplorer",
           "name": "Swagger Docs"
         }
@@ -143,6 +158,7 @@
   },
   "dependencies": {
     "ejs": "^3.1.10",
+    "iconv-lite": "^0.7.1",
     "typescript": "4.9.5",
     "uuid": "^11.1.0"
   },

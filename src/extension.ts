@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as path from "path";
 import { AddSwaggerPanel } from "./model/AddSwaggerPanel";
 import { SwaggerListProvider } from "./providers/SwaggerListProvider";
 import { ContractService } from "./services/ContractService";
@@ -152,6 +153,43 @@ export function activate(context: vscode.ExtensionContext) {
 				vscode.window.showErrorMessage(`修复失败: ${err instanceof Error ? err.message : String(err)}`);
 			}
 		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			'swagger-to-api.resetRequestTemplateChoice',
+			async () => {
+				const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+				if (!workspacePath) {
+					vscode.window.showWarningMessage('未打开工作区');
+					return;
+				}
+
+				try {
+					const config = await ContractService.getConfig(workspacePath);
+					const workDir = path.join(workspacePath, config.dirByRoot, config.workDir);
+					const workDirLegacy = `${workspacePath}/${config.dirByRoot}/${config.workDir}`;
+
+					const keys = [
+						`vaSwaggerToApi.exportRequestTemplatePreference::${workDir}`,
+						`vaSwaggerToApi.exportRequestTemplatePath::${workDir}`,
+						`vaSwaggerToApi.exportRequestTemplatePreference::${workDirLegacy}`,
+						`vaSwaggerToApi.exportRequestTemplatePath::${workDirLegacy}`,
+					];
+
+					for (const key of keys) {
+						await context.globalState.update(key, undefined);
+					}
+					vscode.window.showInformationMessage(
+						`已重置 request 导出选择（workDir: ${workDir}），下次导出接口会重新弹窗。`
+					);
+				} catch (err) {
+					vscode.window.showErrorMessage(
+						`重置失败: ${err instanceof Error ? err.message : String(err)}`
+					);
+				}
+			}
+		)
 	);
 }
 

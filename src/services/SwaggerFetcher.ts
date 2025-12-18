@@ -3,6 +3,43 @@ import * as http from "http";
 import { URL } from "url";
 
 export class SwaggerFetcher {
+	private static decodeResponseBody(res: any, buf: Buffer): string {
+		const contentType = String(res?.headers?.["content-type"] || "");
+		const charsetMatch = contentType.match(/charset\s*=\s*([^;]+)/i);
+		const charset = (charsetMatch?.[1] || "").trim().toLowerCase();
+
+		const tryDecode = (encoding: string): string | null => {
+			try {
+				if (encoding === "utf-8" || encoding === "utf8") {
+					return buf.toString("utf8");
+				}
+				const iconv = require("iconv-lite");
+				return iconv.decode(buf, encoding);
+			} catch {
+				return null;
+			}
+		};
+
+		if (charset) {
+			const decoded = tryDecode(charset);
+			if (decoded !== null) return decoded;
+		}
+
+		const utf8Decoded = tryDecode("utf8");
+		if (utf8Decoded === null) {
+			return buf.toString();
+		}
+
+		if (utf8Decoded.includes("\uFFFD")) {
+			const gbkDecoded = tryDecode("gbk");
+			if (gbkDecoded !== null && !gbkDecoded.includes("\uFFFD")) {
+				return gbkDecoded;
+			}
+		}
+
+		return utf8Decoded;
+	}
+
 	static async fetchSwaggerJson(swaggerUrl: string, bustCache: boolean = false): Promise<any> {
 		// 获取所有可能的 API URL
 		const candidateUrls = this.convertToApiUrls(swaggerUrl);
@@ -57,11 +94,18 @@ export class SwaggerFetcher {
 					if (res.statusCode! < 200 || res.statusCode! > 299) {
 						return reject(new Error(`HTTP ${res.statusCode}`));
 					}
-
-					let data = '';
-					res.on('data', chunk => data += chunk);
+					const chunks: Buffer[] = [];
+					res.on('data', (chunk) => {
+						if (typeof chunk === 'string') {
+							chunks.push(Buffer.from(chunk));
+						} else {
+							chunks.push(chunk);
+						}
+					});
 					res.on('end', () => {
 						try {
+							const buf = Buffer.concat(chunks);
+							const data = this.decodeResponseBody(res, buf);
 							resolve(JSON.parse(data));
 						} catch (err) {
 							reject(new Error('Invalid JSON'));

@@ -2,6 +2,35 @@
 
 此文件记录了"Va Swagger to API(vue)"扩展的所有重要更改。
 
+## [3.2.0] - 2025-12-18
+
+### � IR / AST 生成链路稳定性（本次核心）
+
+- **IR 稳定输出**：导出代码以 IR 为唯一权威数据源，确保 `apis.ts` / `types.ts` 生成结果可预测、便于重构与回归对比
+- **与 $http.run 合同对齐**：`apis.ts` 统一输出 RESTful 风格路径（可能包含 `{param}`），并依赖 request 模板的 query-first + 404/405 fallback 策略兼容不同后端风格
+- **读取现有 apis.ts**：读取既有代码时优先使用 TS AST 解析（失败回退正则），用于增量合并与保留历史方法信息
+
+### �🧩 Swagger 导出交互优化（request 模板）
+
+- **QuickPick 选择器**：导出时使用 QuickPick 替代弹窗按钮，选项更清晰
+- **一次性说明区**：移除选项内重复说明文案，改为顶部分隔说明（更清爽）
+- **取消也记住选择**：取消/关闭视为不导出 request，并缓存为 skip（可重置恢复弹窗）
+
+### 🧱 request 模板能力增强
+
+- **模板模块化**：request 模板独立到 `src/templates/requestTemplate.ts`，便于维护
+- **可选导出**：支持在生成 `apis.ts/types.ts` 时选择是否同时生成 request 模板
+- **复制 run 模型**：支持仅复制 `run` + 必要 helper 的最小片段，便于集成到自有封装
+
+### 🧹 缓存重置入口
+
+- **新增命令**：`重置 request 导出选择（重新弹窗）`
+- **侧边栏入口**：Swagger Explorer 标题栏提供一键清缓存入口
+
+### 🐛 Bug 修复（3.2.0）
+
+- **request 入口一致性**：修复仅存在 `request/` 目录但无 `request/index.ts` 时，生成文件与 `apis.ts` 的 `import $http from '../request'` 不匹配的问题
+
 ## [3.1.0] - 2025-12-14
 
 ### 🧩 PreviewSwagger 预览页重构（零回归）

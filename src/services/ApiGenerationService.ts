@@ -3,6 +3,9 @@ import * as path from "path";
 import * as fs from "fs";
 import { ContractService } from "./ContractService";
 import { SpecAdapter } from "./SpecAdapter";
+import {
+	getRequestTemplateArtifacts,
+} from "../templates/requestTemplate";
 
 /**
  * 类型定义数据结构
@@ -31,6 +34,38 @@ interface ApiDefinition {
 	parameters: any[]; // 参数列表（来自swagger）
 	responseSchema: string; // 响应类型（去除#/definitions/）
 	tags: string[]; // 标签（用于分组到controller）
+}
+
+interface ApisIr {
+	preludeLines: string[];
+	controllers: ControllerIr[];
+}
+
+interface ControllerIr {
+	originalTag: string;
+	controllerConst: string;
+	controllerType: string;
+	exportLine: string;
+	methods: ApiMethodIr[];
+	closeLine: string;
+}
+
+interface ApiMethodBodyIr {
+	pathLine: string;
+	payloadLine: string;
+	callLine: string;
+	returnLine: string;
+}
+
+interface ApiMethodIr {
+	kind: "multiBody" | "urlParams" | "bodyParam" | "noParams";
+	methodName: string;
+	httpMethod: string;
+	respType: string;
+	apiPath: string;
+	openLine: string;
+	body: ApiMethodBodyIr;
+	closeLine: string;
 }
 
 class CodeWriter {
@@ -195,6 +230,83 @@ export class ApiGenerationService {
 			return {};
 		}
 	}
+
+	private static resolveRequestTemplateTargetPath(workDir: string): string {
+		const requestTs = path.join(workDir, "request.ts");
+		const requestDir = path.join(workDir, "request");
+		const requestDirIndex = path.join(requestDir, "index.ts");
+
+		const hasRequestTs = fs.existsSync(requestTs);
+		const hasRequestDirIndex = fs.existsSync(requestDirIndex);
+		const hasRequestDir = fs.existsSync(requestDir);
+
+		// apis.ts 固定 import $http from '../request'
+		// TS 解析规则会优先匹配 request.ts 或 request/index.ts
+		// 若仅存在 request/ 目录但没有 index.ts，生成 index.ts 能确保 import 立即可用
+		if (!hasRequestTs && !hasRequestDirIndex) {
+			if (hasRequestDir) return requestDirIndex;
+			return requestTs;
+		}
+
+		const base = path.join(workDir, "request.swagger-to-api");
+		let candidate = `${base}.ts`;
+		let i = 2;
+		while (fs.existsSync(candidate)) {
+			candidate = `${base}-${i}.ts`;
+			i++;
+		}
+		return candidate;
+	}
+
+	private static findExistingRequestTemplatePath(
+		workDir: string,
+		context: vscode.ExtensionContext
+	): string | null {
+		const stateKey = `vaSwaggerToApi.exportRequestTemplatePath::${workDir}`;
+		const fromState = context.globalState.get<string>(stateKey);
+		if (fromState && fs.existsSync(fromState)) return fromState;
+
+		const normalize = (s: string) => s.replace(/\r\n/g, "\n").trim();
+		const requestTs = path.join(workDir, "request.ts");
+		if (fs.existsSync(requestTs)) {
+			try {
+				const existing = fs.readFileSync(requestTs, "utf-8");
+				if (normalize(existing) === normalize(getRequestTemplateArtifacts().template)) {
+					return requestTs;
+				}
+			} catch {}
+		}
+
+		const requestDirIndex = path.join(workDir, "request", "index.ts");
+		if (fs.existsSync(requestDirIndex)) {
+			try {
+				const existing = fs.readFileSync(requestDirIndex, "utf-8");
+				if (normalize(existing) === normalize(getRequestTemplateArtifacts().template)) {
+					return requestDirIndex;
+				}
+			} catch {}
+		}
+
+		try {
+			const files = fs.readdirSync(workDir);
+			const hits = files
+				.filter((f) => /^request\.swagger-to-api(?:-\d+)?\.ts$/i.test(f))
+				.sort((a, b) => {
+					const parse = (name: string) => {
+						const m = name.match(/^request\.swagger-to-api(?:-(\d+))?\.ts$/i);
+						if (!m) return Number.MAX_SAFE_INTEGER;
+						return m[1] ? Number(m[1]) : 1;
+					};
+					return parse(a) - parse(b);
+				});
+			if (hits.length === 0) return null;
+			return path.join(workDir, hits[0]);
+		} catch {
+			return null;
+		}
+	}
+
+
 
 	private static getExistingApiDataByTsAst(
 		ts: any,
@@ -650,6 +762,104 @@ export class ApiGenerationService {
 			const indexContent = this.generateIndexContent(docName);
 			fs.writeFileSync(indexPath, indexContent, "utf-8");
 
+			const prefKey = `vaSwaggerToApi.exportRequestTemplatePreference::${workDir}`;
+			const requestTemplatePathKey = `vaSwaggerToApi.exportRequestTemplatePath::${workDir}`;
+			let exportRequestTemplate = context.globalState.get<
+				"generate" | "copy" | "skip"
+			>(prefKey);
+
+			if (!exportRequestTemplate) {
+				const hasExistingRequestEntry =
+					fs.existsSync(path.join(workDir, "request.ts")) ||
+					fs.existsSync(path.join(workDir, "request", "index.ts"));
+
+				type RequestPick = vscode.QuickPickItem & {
+					value?: "generate" | "copy";
+				};
+
+				const picks: RequestPick[] = [
+					{
+						label: "说明：apis.ts 使用 RESTful 风格路径（可能包含 {param}）",
+						kind: vscode.QuickPickItemKind.Separator,
+					},
+					{
+						label: "说明：模板 request 会兼容 query-only 后端，并在必要时 fallback 为 RESTful 替换",
+						kind: vscode.QuickPickItemKind.Separator,
+					},
+					{
+						label: "说明：提供 Authorization、白名单、成功码集合、拦截器等配置入口",
+						kind: vscode.QuickPickItemKind.Separator,
+					},
+					{
+						label: `检测：当前工作目录${
+							hasExistingRequestEntry
+								? "已存在 request 入口（request.ts / request/index.ts）"
+								: "未发现 request 入口"
+						}`,
+						kind: vscode.QuickPickItemKind.Separator,
+					},
+					{
+						label: "提示：若已存在 request，本次会生成不同文件名避免覆盖",
+						kind: vscode.QuickPickItemKind.Separator,
+					},
+					{
+						label: "",
+						kind: vscode.QuickPickItemKind.Separator,
+					},
+					{
+						label: "生成 request 模板（推荐）",
+						description: hasExistingRequestEntry
+							? "生成 request.swagger-to-api.ts（避免覆盖）"
+							: "生成 request.ts",
+						value: "generate",
+					},
+					{
+						label: "仅复制 run 模型",
+						description: "不落盘，复制到剪贴板（自行集成）",
+						value: "copy",
+					},
+				];
+
+				const picked = await vscode.window.showQuickPick(picks, {
+					title: "是否同时导出 request 模板？",
+					placeHolder: "输入可过滤选项；取消/关闭 = 不导出且记住选择",
+					ignoreFocusOut: true,
+				});
+
+				// 用户取消（或关闭）：视为 skip，并缓存（后续不再弹窗；可用“重置 request 导出选择”恢复）
+				if (!picked) {
+					exportRequestTemplate = "skip";
+					await context.globalState.update(prefKey, exportRequestTemplate);
+				} else if (picked.value) {
+					exportRequestTemplate = picked.value;
+					await context.globalState.update(prefKey, exportRequestTemplate);
+				} else {
+					exportRequestTemplate = "skip";
+					await context.globalState.update(prefKey, exportRequestTemplate);
+				}
+			}
+
+			if (exportRequestTemplate === "generate") {
+				const artifacts = getRequestTemplateArtifacts();
+				const existing = this.findExistingRequestTemplatePath(workDir, context);
+				if (existing) {
+					await context.globalState.update(requestTemplatePathKey, existing);
+				} else {
+					const requestTargetPath = this.resolveRequestTemplateTargetPath(workDir);
+					fs.writeFileSync(
+						requestTargetPath,
+						artifacts.template,
+						"utf-8"
+					);
+					await context.globalState.update(requestTemplatePathKey, requestTargetPath);
+				}
+			} else if (exportRequestTemplate === "copy") {
+				await vscode.env.clipboard.writeText(getRequestTemplateArtifacts().runModelSnippet);
+				vscode.window.showInformationMessage(
+					"run 模型代码已复制到剪贴板，可粘贴到你的 request 封装中进行集成。"
+				);
+			}
+
 			vscode.window.showInformationMessage(`接口文件已生成到 ${docDir}`);
 			return { ok: true };
 		} catch (error) {
@@ -1017,6 +1227,13 @@ export class ApiGenerationService {
 		return lines;
 	}
 
+	private static sanitizeJSDocText(text: string): string {
+		let s = String(text);
+		s = s.replace(/\uFFFD+/g, "");
+		s = s.replace(/\*\//g, "*\\/");
+		return s;
+	}
+
 	/**
 	 * 生成泛型接口定义
 	 */
@@ -1025,7 +1242,10 @@ export class ApiGenerationService {
 
 		// 添加描述注释
 		if (typeDef.description) {
-			lines.push(`/** ${typeDef.description} */`);
+			const desc = this.sanitizeJSDocText(typeDef.description);
+			if (desc) {
+				lines.push(`/** ${desc} */`);
+			}
 		}
 
 		// 生成接口声明
@@ -1051,7 +1271,10 @@ export class ApiGenerationService {
 
 		// 添加描述注释
 		if (typeDef.description) {
-			lines.push(`/** ${typeDef.description} */`);
+			const desc = this.sanitizeJSDocText(typeDef.description);
+			if (desc) {
+				lines.push(`/** ${desc} */`);
+			}
 		}
 
 		// 生成接口声明
@@ -1081,7 +1304,10 @@ export class ApiGenerationService {
 
 		// 属性描述
 		if (propDef.description) {
-			lines.push(`  /** ${propDef.description} */`);
+			const desc = this.sanitizeJSDocText(propDef.description);
+			if (desc) {
+				lines.push(`  /** ${desc} */`);
+			}
 		}
 
 		// 属性类型
@@ -1820,201 +2046,228 @@ export class ApiGenerationService {
 	 * 生成apis.ts内容
 	 */
 	private static renderApis(mergedApiData: any, spec: any): string {
+		const ir = this.buildApisIr(mergedApiData, spec);
 		const lines = new CodeWriter();
-		lines.push(`/* eslint-disable */`);
-		lines.push(``);
-		lines.push(`import type { AxiosRequestConfig } from 'axios';`);
-		lines.push(`import $http from '../request';`);
-		lines.push(`import * as Types from './types';`);
-		lines.push(``);
+		lines.push(...ir.preludeLines);
+		ir.controllers.forEach((c) => {
+			lines.push(c.exportLine);
+			c.methods.forEach((m) => {
+				lines.push(m.openLine);
+				lines.push(m.body.pathLine);
+				lines.push(m.body.payloadLine);
+				lines.push(m.body.callLine);
+				lines.push(m.body.returnLine);
+				lines.push(m.closeLine);
+			});
+			lines.push(c.closeLine);
+			lines.push("");
+		});
+		return lines.join("\n");
+	}
 
-		// 设置 basePath
+	private static buildApisIr(mergedApiData: any, spec: any): ApisIr {
+		const preludeLines: string[] = [];
+		preludeLines.push(`/* eslint-disable */`);
+		preludeLines.push(``);
+		preludeLines.push(`import type { AxiosRequestConfig } from 'axios';`);
+		preludeLines.push(`import $http from '../request';`);
+		preludeLines.push(`import * as Types from './types';`);
+		preludeLines.push(``);
+
 		const basePath =
 			spec && spec.basePath && spec.basePath !== "/" ? spec.basePath : "";
-		lines.push(`const basePath = '${basePath}';`);
-		lines.push("");
+		preludeLines.push(`const basePath = '${basePath}';`);
+		preludeLines.push("");
 
-		// 构建泛型类型名称集合（用于确保泛型类型有泛型参数）
 		const genericTypeNames = new Set<string>();
 		if (spec && spec.definitions) {
 			const typesPool = this.buildTypesPool(spec.definitions);
 			typesPool.forEach((typeDef: any, name: string) => {
 				if (typeDef.isGeneric) {
-					// 使用 Map 的 key 作为类型名，而不是 typeDef.name
 					genericTypeNames.add(name);
 				}
 			});
 		}
 
-		// 用于跟踪已使用的方法名，确保唯一性
 		const existingMethodNames = new Set<string>();
-
-		// 按照控制器名称排序 (支持中文)
 		const sortedControllers = Object.keys(mergedApiData).sort((a, b) =>
 			a.localeCompare(b, this.LOCALE)
 		);
 
+		const controllers: ControllerIr[] = [];
 		for (const controllerName of sortedControllers) {
 			const apis = mergedApiData[controllerName];
-
-			// 从第一个 API 获取原始 tag 名称
 			const originalTag =
 				apis.length > 0 && apis[0].tags && apis[0].tags.length > 0
 					? apis[0].tags[0]
 					: controllerName;
-
-			// 生成 Controller 常量名（小驼峰，去掉 Controller 后缀）
 			const controllerConst = this.toCamelCase(originalTag);
-
-			// 生成 Controller 类型名（大驼峰，用于 Types.XXX）
 			const controllerType = this.toPascalCase(originalTag);
+			const exportLine = `export const ${controllerConst}: Types.${controllerType} = {`;
 
-			lines.push(
-				`export const ${controllerConst}: Types.${controllerType} = {`
+			const sortedApis = this.sortApis(apis);
+			const methods = sortedApis.map((api: any) =>
+				this.buildApiMethodIr(api, spec, existingMethodNames, genericTypeNames)
 			);
 
-			// 按照 operationId 排序
-			const sortedApis = this.sortApis(apis);
-
-		sortedApis.forEach((api: any) => {
-			const methodName = this.toMethodName(api, existingMethodNames);
-			const method = String(api.method).toUpperCase();
-				let respType = this.resolveResponseType(spec, api);
-				// 确保泛型类型有泛型参数
-				respType = this.ensureGenericTypesForApis(respType, genericTypeNames);
-				const pathExpr = "${basePath}" + String(api.path);
-
-				// 从 spec.paths 中重新提取参数信息（解决增量更新时参数丢失的问题）
-				let parameters = api.parameters || [];
-				if (spec.paths && spec.paths[api.path] && spec.paths[api.path][api.method.toLowerCase()]) {
-					const operation = spec.paths[api.path][api.method.toLowerCase()];
-					if (operation.parameters) {
-						parameters = operation.parameters;
-					}
-				}
-
-				// 分类参数
-				const { bodyParam, bodyParams, queryParams, pathParams } =
-					this.classifyParameters(parameters);
-				const hasUrlParams = queryParams.length > 0 || pathParams.length > 0;
-				const hasMultiBodyParams = bodyParams.length > 1;
-
-				if (hasMultiBodyParams) {
-					// 有多个 body 参数的方法（通常是不规范的 Swagger 定义）
-					// 将所有 body 参数作为方法参数，并组合到 payload 对象中
-					const paramList = bodyParams.map((p: any) => {
-						const optional = p.required === false ? "?" : "";
-						const paramType = p.schema
-							? this.tsTypeFromSchema(p.schema, true)
-							: this.mapPrimitiveTypeForApis(p.type || "string", p.format);
-						return `${p.name}${optional}: ${paramType}`;
-					});
-
-					const argList = paramList.join(", ");
-					const payloadObj = `{ ${bodyParams
-						.map((p: any) => p.name)
-						.join(", ")} }`;
-
-					lines.push(
-						`  async ${methodName}(${argList}${
-							argList ? ", " : ""
-						}axiosConfig?: AxiosRequestConfig): Promise<${respType}> {`
-					);
-					lines.push(`    const path = \`${pathExpr}\`;`);
-					lines.push(
-						`    const payload: Types.BaseRequestDTO = ${payloadObj};`
-					);
-					lines.push(
-						`    const ret = await $http.run<Types.BaseRequestDTO, ${respType}>(path, '${method}', payload, axiosConfig);`
-					);
-					lines.push(`    return ret;`);
-					lines.push(`  },`);
-				} else if (hasUrlParams) {
-					// 有 URL 参数的方法（GET、DELETE 等）
-					const allParams = [...pathParams, ...queryParams]; // path 参数在前，query 参数在后
-
-					// 生成内联参数列表
-					const paramList = allParams.map((p: any) => {
-						const optional = p.in === "path" || p.required ? "" : "?"; // path 参数必须，query 参数看 required
-						let paramType: string;
-
-						if (p.schema) {
-							// 如果有 schema，使用 schema 推导类型
-							paramType = this.tsTypeFromSchema(p.schema, true);
-						} else if (p.type === "array" && p.items) {
-							// 如果是 array 类型，检查 items
-							const itemType = p.items.type
-								? this.mapPrimitiveTypeForApis(p.items.type, p.items.format)
-								: "any";
-							paramType = `${itemType}[]`;
-						} else {
-							// 其他基本类型
-							paramType = this.mapPrimitiveTypeForApis(
-								p.type || "string",
-								p.format
-							);
-						}
-
-						return `${p.name}${optional}: ${paramType}`;
-					});
-
-					const argList = paramList.join(", ");
-					// payload 应该包含所有参数（path 参数 + query 参数）
-					const payloadObj =
-						allParams.length > 0
-							? `{ ${allParams.map((p: any) => p.name).join(", ")} }`
-							: `{}`;
-
-					lines.push(
-						`  async ${methodName}(${argList}${
-							argList ? ", " : ""
-						}axiosConfig?: AxiosRequestConfig): Promise<${respType}> {`
-					);
-					lines.push(`    const path = \`${pathExpr}\`;`);
-					lines.push(
-						`    const payload: Types.BaseRequestDTO = ${payloadObj};`
-					);
-					lines.push(
-						`    const ret = await $http.run<Types.BaseRequestDTO, ${respType}>(path, '${method}', payload, axiosConfig);`
-					);
-					lines.push(`    return ret;`);
-					lines.push(`  },`);
-				} else if (bodyParam) {
-					// 有 body 参数的方法（POST、PUT 等）
-					const reqType = this.resolveRequestType(spec, api);
-					const paramName = bodyParam.name || "req";
-					const optional = bodyParam.required === false ? "?" : "";
-					const payloadType = optional ? `${reqType} | undefined` : reqType;
-					lines.push(
-						`  async ${methodName}(${paramName}${optional}: ${reqType}, axiosConfig?: AxiosRequestConfig): Promise<${respType}> {`
-					);
-					lines.push(`    const path = \`${pathExpr}\`;`);
-					lines.push(`    const payload: ${payloadType} = ${paramName};`);
-					lines.push(
-						`    const ret = await $http.run<${reqType}, ${respType}>(path, '${method}', payload, axiosConfig);`
-					);
-					lines.push(`    return ret;`);
-					lines.push(`  },`);
-				} else {
-					// 没有参数的方法
-					lines.push(
-						`  async ${methodName}(axiosConfig?: AxiosRequestConfig): Promise<${respType}> {`
-					);
-					lines.push(`    const path = \`${pathExpr}\`;`);
-					lines.push(`    const payload: Types.BaseRequestDTO = {};`);
-					lines.push(
-						`    const ret = await $http.run<Types.BaseRequestDTO, ${respType}>(path, '${method}', payload, axiosConfig);`
-					);
-					lines.push(`    return ret;`);
-					lines.push(`  },`);
-				}
+			controllers.push({
+				originalTag,
+				controllerConst,
+				controllerType,
+				exportLine,
+				methods,
+				closeLine: "};",
 			});
-
-			lines.push("};");
-			lines.push("");
 		}
 
-		return lines.join("\n");
+		return { preludeLines, controllers };
+	}
+
+	private static buildApiMethodIr(
+		api: any,
+		spec: any,
+		existingMethodNames: Set<string>,
+		genericTypeNames: Set<string>
+	): ApiMethodIr {
+		const methodName = this.toMethodName(api, existingMethodNames);
+		const method = String(api.method).toUpperCase();
+		let respType = this.resolveResponseType(spec, api);
+		respType = this.ensureGenericTypesForApis(respType, genericTypeNames);
+		const pathExpr = "${basePath}" + String(api.path);
+
+		let parameters = api.parameters || [];
+		if (spec.paths && spec.paths[api.path] && spec.paths[api.path][api.method.toLowerCase()]) {
+			const operation = spec.paths[api.path][api.method.toLowerCase()];
+			if (operation.parameters) {
+				parameters = operation.parameters;
+			}
+		}
+
+		const { bodyParam, bodyParams, queryParams, pathParams } =
+			this.classifyParameters(parameters);
+		const hasUrlParams = queryParams.length > 0 || pathParams.length > 0;
+		const hasMultiBodyParams = bodyParams.length > 1;
+
+		if (hasMultiBodyParams) {
+			const paramList = bodyParams.map((p: any) => {
+				const optional = p.required === false ? "?" : "";
+				const paramType = p.schema
+					? this.tsTypeFromSchema(p.schema, true)
+					: this.mapPrimitiveTypeForApis(p.type || "string", p.format);
+				return `${p.name}${optional}: ${paramType}`;
+			});
+
+			const argList = paramList.join(", ");
+			const payloadObj = `{ ${bodyParams.map((p: any) => p.name).join(", ")} }`;
+
+			const openLine = `  async ${methodName}(${argList}${argList ? ", " : ""}axiosConfig?: AxiosRequestConfig): Promise<${respType}> {`;
+			const body: ApiMethodBodyIr = {
+				pathLine: `    const path = \`${pathExpr}\`;`,
+				payloadLine: `    const payload: Types.BaseRequestDTO = ${payloadObj};`,
+				callLine: `    const ret = await $http.run<Types.BaseRequestDTO, ${respType}>(path, '${method}', payload, axiosConfig);`,
+				returnLine: `    return ret;`,
+			};
+			return {
+				kind: "multiBody",
+				methodName,
+				httpMethod: method,
+				respType,
+				apiPath: String(api.path),
+				openLine,
+				body,
+				closeLine: `  },`,
+			};
+		}
+
+		if (hasUrlParams) {
+			const allParams = [...pathParams, ...queryParams];
+			const paramList = allParams.map((p: any) => {
+				const optional = p.in === "path" || p.required ? "" : "?";
+				let paramType: string;
+
+				if (p.schema) {
+					paramType = this.tsTypeFromSchema(p.schema, true);
+				} else if (p.type === "array" && p.items) {
+					const itemType = p.items.type
+						? this.mapPrimitiveTypeForApis(p.items.type, p.items.format)
+						: "any";
+					paramType = `${itemType}[]`;
+				} else {
+					paramType = this.mapPrimitiveTypeForApis(
+						p.type || "string",
+						p.format
+					);
+				}
+
+				return `${p.name}${optional}: ${paramType}`;
+			});
+
+			const argList = paramList.join(", ");
+			const payloadObj =
+				allParams.length > 0
+					? `{ ${allParams.map((p: any) => p.name).join(", ")} }`
+					: `{}`;
+
+			const openLine = `  async ${methodName}(${argList}${argList ? ", " : ""}axiosConfig?: AxiosRequestConfig): Promise<${respType}> {`;
+			const body: ApiMethodBodyIr = {
+				pathLine: `    const path = \`${pathExpr}\`;`,
+				payloadLine: `    const payload: Types.BaseRequestDTO = ${payloadObj};`,
+				callLine: `    const ret = await $http.run<Types.BaseRequestDTO, ${respType}>(path, '${method}', payload, axiosConfig);`,
+				returnLine: `    return ret;`,
+			};
+			return {
+				kind: "urlParams",
+				methodName,
+				httpMethod: method,
+				respType,
+				apiPath: String(api.path),
+				openLine,
+				body,
+				closeLine: `  },`,
+			};
+		}
+
+		if (bodyParam) {
+			const reqType = this.resolveRequestType(spec, api);
+			const paramName = bodyParam.name || "req";
+			const optional = bodyParam.required === false ? "?" : "";
+			const payloadType = optional ? `${reqType} | undefined` : reqType;
+			const openLine = `  async ${methodName}(${paramName}${optional}: ${reqType}, axiosConfig?: AxiosRequestConfig): Promise<${respType}> {`;
+			const body: ApiMethodBodyIr = {
+				pathLine: `    const path = \`${pathExpr}\`;`,
+				payloadLine: `    const payload: ${payloadType} = ${paramName};`,
+				callLine: `    const ret = await $http.run<${reqType}, ${respType}>(path, '${method}', payload, axiosConfig);`,
+				returnLine: `    return ret;`,
+			};
+			return {
+				kind: "bodyParam",
+				methodName,
+				httpMethod: method,
+				respType,
+				apiPath: String(api.path),
+				openLine,
+				body,
+				closeLine: `  },`,
+			};
+		}
+
+		const openLine = `  async ${methodName}(axiosConfig?: AxiosRequestConfig): Promise<${respType}> {`;
+		const body: ApiMethodBodyIr = {
+			pathLine: `    const path = \`${pathExpr}\`;`,
+			payloadLine: `    const payload: Types.BaseRequestDTO = {};`,
+			callLine: `    const ret = await $http.run<Types.BaseRequestDTO, ${respType}>(path, '${method}', payload, axiosConfig);`,
+			returnLine: `    return ret;`,
+		};
+		return {
+			kind: "noParams",
+			methodName,
+			httpMethod: method,
+			respType,
+			apiPath: String(api.path),
+			openLine,
+			body,
+			closeLine: `  },`,
+		};
 	}
 
 	/**

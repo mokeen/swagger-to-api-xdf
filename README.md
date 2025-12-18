@@ -1,11 +1,11 @@
 # Va Swagger to API (Vue2/Vue3)
 
-![版本](https://img.shields.io/badge/版本-3.1.0-blue.svg)
+![版本](https://img.shields.io/badge/版本-3.2.0-blue.svg)
 ![VS Code](https://img.shields.io/badge/VS%20Code-^1.80.0-brightgreen.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg)
 ![Vue](https://img.shields.io/badge/Vue-2%20%7C%203-brightgreen.svg)
 ![OpenAPI](https://img.shields.io/badge/OpenAPI-2.0%20%7C%203.x-orange.svg)
-![许可证](https://img.shields.io/badge/许可证-MIT-green.svg)
+![许可证](https://img.shields.io/badge/许可证-ICT-green.svg)
 
 一个强大的 VS Code 扩展，可以从 Swagger 2.0 / OpenAPI 3.x 文档生成 TypeScript API 客户端代码，支持智能增量更新。适用于 Vue 2、Vue 3 以及任何 TypeScript + Axios 项目。
 
@@ -109,20 +109,20 @@
 ### 常用脚本
 
 - **开发 watch（推荐）**：
-	- `yarn run watch`
-	- 同时 watch webview 打包、extension bundling 和 `tsc -watch` 类型检查
+  - `yarn run watch`
+  - 同时 watch webview 打包、extension bundling 和 `tsc -watch` 类型检查
 
 - **一次性编译（发布/打包前）**：
-	- `yarn run compile:all`
-	- 先构建 webviews 与 extension bundle，再运行 `tsc` 做类型检查
+  - `yarn run compile:all`
+  - 先构建 webviews 与 extension bundle，再运行 `tsc` 做类型检查
 
 - **仅构建 webviews**：
-	- `yarn run build:webviews`
-	- `yarn run watch:webviews`
+  - `yarn run build:webviews`
+  - `yarn run watch:webviews`
 
 - **仅构建 extension bundle**：
-	- `yarn run build:extension`
-	- `yarn run watch:extension`
+  - `yarn run build:extension`
+  - `yarn run watch:extension`
 
 ### 调试
 
@@ -175,12 +175,24 @@ src/services/
 - **VS Code**：1.80.0 或更高版本
 - **项目框架**：Vue 2、Vue 3 或任何 TypeScript 项目
 - **HTTP 客户端**：Axios（推荐）或其他兼容的 HTTP 库
-- **请求模块**：创建一个导出 `$http` 的 `request.ts` 文件
+- **请求模块**：创建一个导出 `$http` 的 request 入口文件（`request.ts` 或 `request/index.ts`）
 - **后端文档**：Swagger 2.0 或 OpenAPI 3.x (支持 3.0.x 和 3.1.x)
 
 ### 请求模块示例
 
 需要在项目中创建一个 `request.ts` 文件，导出 `$http` 对象，提供 `run` 方法用于发送请求。
+
+#### request 模板导出（v3.2.0）
+
+在 Swagger 预览页点击“导出选中接口”时，扩展会提示你是否同时导出 request 模板：
+
+- **生成 request 模板（推荐）**：在工作目录生成 `request.ts`（或 `request/index.ts`）
+- **仅复制 run 模型**：不落盘，将 `run` + 必要 helper 的最小片段复制到剪贴板，便于粘贴到你自己的 request 封装中
+- **取消/关闭**：视为不导出 request，并会记住本次选择（后续不再弹窗）
+
+如需恢复弹窗，可在 Swagger Explorer 标题栏点击“重置 request 导出选择（重新弹窗）”。
+
+说明：生成的 `apis.ts` 固定引用 `import $http from '../request'`，因此 request 入口应为 `request.ts` 或 `request/index.ts`。
 
 ### 使用示例
 
